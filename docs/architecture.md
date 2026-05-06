@@ -4,7 +4,7 @@
 
 The system is a single Node.js service with four layers:
 
-1. Exchange adapters normalize Cascade and RISEx APIs into a common orderbook and order interface. A mock adapter is available for local smoke tests.
+1. Exchange adapters normalize Cascade WebSocket and RISEx REST APIs into a common orderbook and order interface. A mock adapter is available for local smoke tests.
 2. The arbitrage engine evaluates BTC and ETH two-leg opportunities in both directions.
 3. Executors apply safety policy. `paper` mode records simulated delta-neutral fills. `live` mode is gated and sends IOC-style paired orders through adapters.
 4. The dashboard, Telegram notifier, and daily report read from the same state store.
@@ -31,7 +31,7 @@ test/             Node test runner unit tests
 
 ```mermaid
 flowchart LR
-  C["Cascade REST"] --> N["Normalize Orderbook"]
+  C["Cascade WS"] --> N["Normalize Orderbook"]
   R["RISEx REST"] --> N
   N --> E["Arbitrage Engine"]
   E --> X["Executor: paper or live"]
@@ -50,7 +50,7 @@ flowchart LR
 - Daily loss breach: engine pauses when realized daily PnL is below `-MAX_DAILY_LOSS_USD`.
 - Position imbalance: paper state tracks per-symbol venue exposure and refuses opportunities that would exceed `MAX_POSITION_USD_PER_SYMBOL`.
 - Missing credentials: adapters raise explicit configuration errors; paper mode continues without live credentials.
-- Unknown exchange route during onboarding: keep `MARKET_DATA_MODE=mock` until live orderbook paths are validated, then switch to `live`.
+- Unknown exchange route during onboarding: keep `TRADING_MODE=paper` until live orderbook data, balances, alerts, and paper fills are validated.
 
 ## Error Management
 
@@ -62,4 +62,4 @@ flowchart LR
 
 ## Performance Evaluation
 
-The hot path is O(symbols * depth * log(maxNotional)) because each direction uses a small binary search over orderbook depth. With BTC and ETH, depth 20, and a 2.5s loop, the CPU cost is negligible on a laptop. Network latency dominates. For lower latency production, replace polling with exchange WebSockets and keep the same normalized orderbook interface.
+The hot path is O(symbols * depth * log(maxNotional)) because each direction uses a small binary search over orderbook depth. With BTC and ETH, depth 20, and a 2.5s loop, the CPU cost is negligible on a laptop. Network latency dominates. Cascade is already read through WebSocket; for lower latency production, keep persistent orderbook streams for both venues instead of polling snapshots.

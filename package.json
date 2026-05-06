@@ -9,6 +9,9 @@
     "test": "node --test test/*.test.js",
     "check": "node --check src/*.js src/**/*.js test/*.test.js"
   },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
   "engines": {
     "node": ">=20"
   }

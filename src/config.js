@@ -48,6 +48,9 @@ export function loadConfig() {
       name: "cascade",
       baseUrl: envString("CASCADE_BASE_URL", "https://engine.cascade.cooking"),
       jwt: envString("CASCADE_JWT"),
+      orderbookTransport: envString("CASCADE_ORDERBOOK_TRANSPORT", "ws"),
+      wsPath: envString("CASCADE_WS_PATH", "/ws"),
+      orderbookTickSize: envNumber("CASCADE_ORDERBOOK_TICK_SIZE", 0.1, { min: 0.000001 }),
       orderbookPath: envString("CASCADE_ORDERBOOK_PATH", "/orderbook"),
       orderbookQueryParam: envString("CASCADE_ORDERBOOK_QUERY_PARAM", "market"),
       placeOrderPath: envString("CASCADE_PLACE_ORDER_PATH", "/orders/place"),
@@ -55,7 +58,10 @@ export function loadConfig() {
       positionsPath: envString("CASCADE_POSITIONS_PATH", "/account/positions"),
       marketsPath: envString("CASCADE_MARKETS_PATH", "/markets"),
       markets: Object.fromEntries(
-        symbols.map((symbol) => [symbol, envString(`CASCADE_MARKET_${symbol}`, `${symbol}-USD`)]),
+        symbols.map((symbol) => [
+          symbol,
+          envString(`CASCADE_MARKET_${symbol}`, `${symbol}-USD-PERP`),
+        ]),
       ),
     },
     risex: {
@@ -67,7 +73,10 @@ export function loadConfig() {
       enableTestnetServerSigning: envBool("RISEX_ENABLE_TESTNET_SERVER_SIGNING", false),
       signerPrivateKey: envString("RISEX_SIGNER_PRIVATE_KEY"),
       markets: Object.fromEntries(
-        symbols.map((symbol) => [symbol, envString(`RISEX_MARKET_${symbol}`, `${symbol}-PERP`)]),
+        symbols.map((symbol) => [
+          symbol,
+          envString(`RISEX_MARKET_${symbol}`, symbol === "BTC" ? "1" : symbol === "ETH" ? "2" : symbol),
+        ]),
       ),
     },
   };

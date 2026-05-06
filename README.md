@@ -2,7 +2,7 @@
 
 Production-oriented delta-neutral arbitrage monitor for BTC and ETH between Cascade and RISEx.
 
-The app starts in `paper` mode with `MARKET_DATA_MODE=mock`, so the dashboard and full control flow run immediately without keys. For real exchange data, set `MARKET_DATA_MODE=live`. It monitors order books, computes executable two-leg spreads, simulates fills, records PnL, serves a dashboard, sends Telegram notifications when configured, and produces a daily report. Live trading is intentionally gated by both `TRADING_MODE=live` and `TRADING_ENABLED=true`.
+The app starts in `paper` trading mode with `MARKET_DATA_MODE=live`, so it reads real public order books while keeping order execution disabled. It monitors order books, computes executable two-leg spreads, simulates fills, records PnL, serves a dashboard, sends Telegram notifications when configured, and produces a daily report. Live trading is intentionally gated by both `TRADING_MODE=live` and `TRADING_ENABLED=true`.
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ Open `http://127.0.0.1:8787`.
 
 ## Live Trading Notes
 
-Cascade public docs provided in this repository confirm auth and JWT usage, but not every order or orderbook route. Cascade endpoint paths are therefore configurable through `.env`.
+Cascade public docs provided in this repository confirm auth and JWT usage. Public orderbook data is read from the Cascade engine WebSocket using the app's `source=book` subscription format. Live order placement routes are still configurable through `.env` until Cascade publishes the full order schema.
 
 RISEx routes are verified from the official docs. RISEx live order submission requires a valid permit. On testnet only, RISEx docs expose a server-signing escape hatch via `signer_private_key`; this app supports it only when `RISEX_ENABLE_TESTNET_SERVER_SIGNING=true`. For production, replace that with client-side EIP-712 permit signing before enabling live trading.
 

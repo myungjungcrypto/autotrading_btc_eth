@@ -36,6 +36,15 @@ TRADING_ENABLED=false
 MARKET_DATA_MODE=live
 ```
 
+If you previously copied an older `.env`, make sure the market ids are updated:
+
+```bash
+CASCADE_MARKET_BTC=BTC-USD-PERP
+CASCADE_MARKET_ETH=ETH-USD-PERP
+RISEX_MARKET_BTC=1
+RISEX_MARKET_ETH=2
+```
+
 Switch to live trading only after live market data, balances, Telegram alerts, and paper fills look correct:
 
 ```bash

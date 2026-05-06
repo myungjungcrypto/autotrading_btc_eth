@@ -16,7 +16,7 @@ export class RisexClient {
   async getMarkets(forceRefresh = false) {
     if (this.marketsCache && !forceRefresh) return this.marketsCache;
     const data = await requestJson(withQuery(this.url("/markets"), { force_refresh: forceRefresh }));
-    this.marketsCache = data.markets ?? [];
+    this.marketsCache = data.data?.markets ?? data.markets ?? [];
     return this.marketsCache;
   }
 
@@ -57,7 +57,7 @@ export class RisexClient {
       exchange: "risex",
       symbol,
       market: market.market_id,
-      raw,
+      raw: raw.data ?? raw,
     });
   }
 

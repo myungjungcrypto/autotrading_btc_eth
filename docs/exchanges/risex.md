@@ -26,6 +26,11 @@ Sources:
 
 ## Orderbook Shape
 
+Current testnet market ids used by this bot:
+
+- BTC/USDC: `1`
+- ETH/USDC: `2`
+
 `GET /v1/orderbook` returns:
 
 ```json

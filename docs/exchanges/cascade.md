@@ -77,10 +77,38 @@ Authorization: Bearer <token>
 }
 ```
 
+## Public Orderbook
+
+Cascade's current app reads public orderbooks from the engine WebSocket:
+
+```text
+wss://engine.cascade.cooking/ws
+```
+
+Subscription format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "subscribe",
+  "params": {
+    "source": "book",
+    "symbol": "BTC-USD-PERP",
+    "tickSize": 0.1
+  },
+  "id": 1
+}
+```
+
+The bot uses this for paper/live market data.
+
 ## Implementation Note
 
-The provided docs confirm auth and account routes, but do not publish orderbook/order placement schemas. This repository keeps Cascade paths configurable:
+The provided docs confirm auth and account routes, but do not publish live order placement schemas. This repository keeps Cascade order routes configurable:
 
+- `CASCADE_ORDERBOOK_TRANSPORT`
+- `CASCADE_WS_PATH`
+- `CASCADE_ORDERBOOK_TICK_SIZE`
 - `CASCADE_ORDERBOOK_PATH`
 - `CASCADE_ORDERBOOK_QUERY_PARAM`
 - `CASCADE_PLACE_ORDER_PATH`
