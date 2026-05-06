@@ -63,4 +63,4 @@ flowchart LR
 
 ## Performance Evaluation
 
-The hot path is O(symbols * depth) because each entry or exit direction walks normalized orderbook levels once. With BTC and ETH, depth 20, and a 2.5s loop, the CPU cost is negligible on a laptop. Network latency dominates. Cascade is already read through WebSocket; for lower latency production, keep persistent orderbook streams for both venues instead of polling snapshots.
+The hot path is O(symbols * depth) because each entry or exit direction walks normalized orderbook levels once. With BTC and ETH, depth 20, and a 500ms loop, the CPU cost is negligible on a small EC2 instance. Network latency dominates. Cascade is read through a persistent WebSocket orderbook cache; RISEx is currently polled through REST, so its response time and rate limits determine the practical lower bound.
