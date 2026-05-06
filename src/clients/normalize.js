@@ -35,6 +35,10 @@ export function normalizeOrderbook({ exchange, symbol, market, raw, receivedAt =
     asks,
     bestBid: bids[0]?.price ?? null,
     bestAsk: asks[0]?.price ?? null,
+    markPrice: decimalToNumber(raw?.mark ?? raw?.markPrice ?? raw?.mark_price) || null,
+    indexPrice: decimalToNumber(raw?.index ?? raw?.indexPrice ?? raw?.index_price) || null,
+    midpoint: decimalToNumber(raw?.midpoint ?? raw?.mid ?? raw?.midPrice) || null,
+    spread: decimalToNumber(raw?.spread) || null,
     raw,
   };
 }

@@ -4,6 +4,8 @@ Production-oriented delta-neutral arbitrage monitor for BTC and ETH between Casc
 
 The app starts in `paper` trading mode with `MARKET_DATA_MODE=live`, so it reads real public order books while keeping order execution disabled. It monitors order books, computes executable two-leg spreads, simulates fills, records PnL, serves a dashboard, sends Telegram notifications when configured, and produces a daily report. Live trading is intentionally gated by both `TRADING_MODE=live` and `TRADING_ENABLED=true`.
 
+For Cascade, the dashboard shows mark/index/midpoint for orientation and executable bid/ask for arbitrage. Trade decisions use executable orderbook depth, not mark price.
+
 ## Quick Start
 
 ```bash

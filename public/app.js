@@ -82,10 +82,13 @@ function marketHtml(symbol, books) {
   return `<div class="market">
     <div class="market-head"><strong>${symbol}</strong><span>${c.market ?? "-"} / ${r.market ?? "-"}</span></div>
     <div class="quote-grid">
-      <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong></span>
-      <span>Cascade ask <strong>${fmt(c.bestAsk, 4)}</strong></span>
-      <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong></span>
-      <span>RISEx ask <strong>${fmt(r.bestAsk, 4)}</strong></span>
+      <span>Cascade mark <strong>${fmt(c.markPrice, 4)}</strong></span>
+      <span>Cascade index <strong>${fmt(c.indexPrice, 4)}</strong></span>
+      <span>Cascade mid <strong>${fmt(c.midpoint, 4)}</strong></span>
+      <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong> / ${fmt(c.bids?.[0]?.size, 6)}</span>
+      <span>Cascade ask <strong>${fmt(c.bestAsk, 4)}</strong> / ${fmt(c.asks?.[0]?.size, 6)}</span>
+      <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong> / ${fmt(r.bids?.[0]?.size, 6)}</span>
+      <span>RISEx ask <strong>${fmt(r.bestAsk, 4)}</strong> / ${fmt(r.asks?.[0]?.size, 6)}</span>
     </div>
   </div>`;
 }

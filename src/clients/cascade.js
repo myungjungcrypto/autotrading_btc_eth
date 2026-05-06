@@ -44,6 +44,9 @@ export class CascadeClient {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
       let settled = false;
+      let bookPayload = null;
+      let pricePayload = null;
+      let graceTimer = null;
       const timeout = setTimeout(() => {
         finish(null, new Error(`Cascade orderbook timeout for ${market}`));
       }, this.config.timeoutMs ?? 8000);
@@ -52,6 +55,7 @@ export class CascadeClient {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        if (graceTimer) clearTimeout(graceTimer);
         try {
           ws.terminate();
         } catch {
@@ -59,6 +63,29 @@ export class CascadeClient {
         }
         if (error) reject(error);
         else resolve(book);
+      };
+
+      const maybeFinish = () => {
+        if (!bookPayload) return;
+        if (!pricePayload && !graceTimer) {
+          graceTimer = setTimeout(maybeFinish, 250);
+          return;
+        }
+        finish(
+          normalizeOrderbook({
+            exchange: "cascade",
+            symbol,
+            market,
+            raw: {
+              bids: bookPayload.bids.slice(0, depth),
+              asks: bookPayload.asks.slice(0, depth),
+              mark: pricePayload?.mark,
+              index: pricePayload?.index,
+              midpoint: pricePayload?.midpoint,
+              spread: pricePayload?.spread,
+            },
+          }),
+        );
       };
 
       ws.on("open", () => {
@@ -74,6 +101,17 @@ export class CascadeClient {
             id: 1,
           }),
         );
+        ws.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: "subscribe",
+            params: {
+              source: "price",
+              symbols: [market],
+            },
+            id: 2,
+          }),
+        );
       });
 
       ws.on("message", (data) => {
@@ -84,18 +122,16 @@ export class CascadeClient {
             return;
           }
           const bookData = payload.data;
-          if (!bookData || bookData.symbol !== market || !bookData.bids || !bookData.asks) return;
-          finish(
-            normalizeOrderbook({
-              exchange: "cascade",
-              symbol,
-              market,
-              raw: {
-                bids: bookData.bids.slice(0, depth),
-                asks: bookData.asks.slice(0, depth),
-              },
-            }),
-          );
+          if (!bookData || bookData.symbol !== market) return;
+          if (bookData.bids && bookData.asks && payload.type === "Book Snapshot") {
+            bookPayload = bookData;
+            maybeFinish();
+            return;
+          }
+          if (bookData.mark || bookData.index || bookData.midpoint) {
+            pricePayload = bookData;
+            maybeFinish();
+          }
         } catch (error) {
           finish(null, error);
         }
