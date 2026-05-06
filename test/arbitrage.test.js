@@ -90,3 +90,88 @@ test("evaluateArbitrage rejects spread below threshold", () => {
 
   assert.equal(opp, null);
 });
+
+test("evaluateArbitrage only consumes levels with profitable marginal edge", () => {
+  const cascadeBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    raw: {
+      bids: [[99, 20]],
+      asks: [
+        [100, 1],
+        [105, 20],
+      ],
+    },
+  });
+  const risexBook = normalizeOrderbook({
+    exchange: "risex",
+    symbol: "BTC",
+    market: "1",
+    raw: {
+      bids: [
+        [101, 1],
+        [100, 20],
+      ],
+      asks: [[102, 20]],
+    },
+  });
+
+  const opp = evaluateArbitrage({
+    symbol: "BTC",
+    cascadeBook,
+    risexBook,
+    config: {
+      maxTradeUsd: 1000,
+      minTradeUsd: 10,
+      minEdgeBps: 50,
+      takerFeeBps: 0,
+      slippageBufferBps: 0,
+    },
+  });
+
+  assert.equal(opp.buyExchange, "cascade");
+  assert.equal(opp.sellExchange, "risex");
+  assert.equal(opp.size, 1);
+  assert.equal(opp.notionalUsd, 100);
+  assert.equal(opp.buyFills.length, 1);
+  assert.equal(opp.sellFills.length, 1);
+});
+
+test("evaluateArbitrage matches the same base size on both legs", () => {
+  const cascadeBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    raw: {
+      bids: [[99, 10]],
+      asks: [[100, 2]],
+    },
+  });
+  const risexBook = normalizeOrderbook({
+    exchange: "risex",
+    symbol: "BTC",
+    market: "1",
+    raw: {
+      bids: [[110, 1]],
+      asks: [[111, 10]],
+    },
+  });
+
+  const opp = evaluateArbitrage({
+    symbol: "BTC",
+    cascadeBook,
+    risexBook,
+    config: {
+      maxTradeUsd: 1000,
+      minTradeUsd: 10,
+      minEdgeBps: 1,
+      takerFeeBps: 0,
+      slippageBufferBps: 0,
+    },
+  });
+
+  assert.equal(opp.size, 1);
+  assert.equal(opp.notionalUsd, 100);
+  assert.equal(opp.expectedPnlUsd, 10);
+});

@@ -46,7 +46,7 @@ export function loadConfig() {
     },
     cascade: {
       name: "cascade",
-      baseUrl: envString("CASCADE_BASE_URL", "https://engine.cascade.cooking"),
+      baseUrl: envString("CASCADE_BASE_URL", "https://engine.cascade.xyz"),
       jwt: envString("CASCADE_JWT"),
       orderbookTransport: envString("CASCADE_ORDERBOOK_TRANSPORT", "ws"),
       wsPath: envString("CASCADE_WS_PATH", "/ws"),

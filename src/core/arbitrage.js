@@ -29,6 +29,82 @@ export function availableNotional(levels) {
   return levels.reduce((sum, level) => sum + level.price * level.size, 0);
 }
 
+export function consumeProfitableDepth({
+  buyLevels,
+  sellLevels,
+  maxTradeUsd,
+  minTradeUsd,
+  minEdgeBps,
+  costBps,
+}) {
+  let buyIndex = 0;
+  let sellIndex = 0;
+  let buyRemainingSize = buyLevels[0]?.size ?? 0;
+  let sellRemainingSize = sellLevels[0]?.size ?? 0;
+  let remainingUsd = maxTradeUsd;
+  let size = 0;
+  let buyNotional = 0;
+  let sellNotional = 0;
+  const buyFills = [];
+  const sellFills = [];
+
+  while (
+    buyIndex < buyLevels.length &&
+    sellIndex < sellLevels.length &&
+    remainingUsd > 0.000001
+  ) {
+    const buyLevel = buyLevels[buyIndex];
+    const sellLevel = sellLevels[sellIndex];
+    const levelNetBps = bps(sellLevel.price - buyLevel.price, buyLevel.price) - costBps;
+    if (levelNetBps < minEdgeBps) break;
+
+    const maxSizeByUsd = remainingUsd / buyLevel.price;
+    const takeSize = Math.min(buyRemainingSize, sellRemainingSize, maxSizeByUsd);
+    if (takeSize <= 0) break;
+
+    const buyFillNotional = takeSize * buyLevel.price;
+    const sellFillNotional = takeSize * sellLevel.price;
+    buyFills.push({ price: buyLevel.price, size: takeSize, notional: buyFillNotional });
+    sellFills.push({ price: sellLevel.price, size: takeSize, notional: sellFillNotional });
+
+    size += takeSize;
+    buyNotional += buyFillNotional;
+    sellNotional += sellFillNotional;
+    remainingUsd -= buyFillNotional;
+    buyRemainingSize -= takeSize;
+    sellRemainingSize -= takeSize;
+
+    if (buyRemainingSize <= 0.000000001) {
+      buyIndex += 1;
+      buyRemainingSize = buyLevels[buyIndex]?.size ?? 0;
+    }
+    if (sellRemainingSize <= 0.000000001) {
+      sellIndex += 1;
+      sellRemainingSize = sellLevels[sellIndex]?.size ?? 0;
+    }
+  }
+
+  if (buyNotional < minTradeUsd || size <= 0) return null;
+
+  const buyPrice = buyNotional / size;
+  const sellPrice = sellNotional / size;
+  const grossBps = bps(sellPrice - buyPrice, buyPrice);
+  const netBps = grossBps - costBps;
+  if (netBps < minEdgeBps) return null;
+
+  return {
+    size,
+    buyPrice,
+    sellPrice,
+    notionalUsd: buyNotional,
+    grossBps,
+    netBps,
+    expectedPnlUsd: sellNotional - buyNotional - (buyNotional * costBps) / 10000,
+    buyFills,
+    sellFills,
+  };
+}
+
 export function evaluateDirection({
   symbol,
   buyExchange,
@@ -38,59 +114,30 @@ export function evaluateDirection({
   config,
 }) {
   if (!buyBook.asks.length || !sellBook.bids.length) return null;
-  const maxBookNotional = Math.min(availableNotional(buyBook.asks), availableNotional(sellBook.bids));
-  const upper = Math.min(config.maxTradeUsd, maxBookNotional);
-  if (upper < config.minTradeUsd) return null;
-
   const costBps = config.takerFeeBps * 2 + config.slippageBufferBps;
-  let lo = 0;
-  let hi = upper;
-  let best = null;
+  const fill = consumeProfitableDepth({
+    buyLevels: buyBook.asks,
+    sellLevels: sellBook.bids,
+    maxTradeUsd: config.maxTradeUsd,
+    minTradeUsd: config.minTradeUsd,
+    minEdgeBps: config.minEdgeBps,
+    costBps,
+  });
 
-  for (let i = 0; i < 18; i += 1) {
-    const mid = (lo + hi) / 2;
-    const buy = consumeNotional(buyBook.asks, mid);
-    const sell = consumeNotional(sellBook.bids, mid);
-    if (!buy?.complete || !sell?.complete) {
-      hi = mid;
-      continue;
-    }
-    const gross = sell.avgPrice - buy.avgPrice;
-    const grossBps = bps(gross, buy.avgPrice);
-    const netBps = grossBps - costBps;
-    const pnlUsd = (gross * Math.min(buy.size, sell.size)) - (mid * costBps) / 10000;
-    const candidate = {
-      symbol,
-      buyExchange,
-      sellExchange,
-      buyPrice: buy.avgPrice,
-      sellPrice: sell.avgPrice,
-      size: Math.min(buy.size, sell.size),
-      notionalUsd: mid,
-      grossBps,
-      netBps,
-      expectedPnlUsd: pnlUsd,
-      buyFills: buy.fills,
-      sellFills: sell.fills,
-    };
-    if (netBps >= config.minEdgeBps) {
-      lo = mid;
-      best = candidate;
-    } else {
-      hi = mid;
-    }
-  }
-
-  if (!best || best.notionalUsd < config.minTradeUsd) return null;
+  if (!fill) return null;
   return {
-    ...best,
-    buyPrice: round(best.buyPrice, 6),
-    sellPrice: round(best.sellPrice, 6),
-    size: round(best.size, 8),
-    notionalUsd: round(best.notionalUsd, 2),
-    grossBps: round(best.grossBps, 3),
-    netBps: round(best.netBps, 3),
-    expectedPnlUsd: round(best.expectedPnlUsd, 4),
+    symbol,
+    buyExchange,
+    sellExchange,
+    buyPrice: round(fill.buyPrice, 6),
+    sellPrice: round(fill.sellPrice, 6),
+    size: round(fill.size, 8),
+    notionalUsd: round(fill.notionalUsd, 2),
+    grossBps: round(fill.grossBps, 3),
+    netBps: round(fill.netBps, 3),
+    expectedPnlUsd: round(fill.expectedPnlUsd, 4),
+    buyFills: fill.buyFills,
+    sellFills: fill.sellFills,
   };
 }
 

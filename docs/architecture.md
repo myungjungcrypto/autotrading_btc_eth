@@ -45,7 +45,7 @@ flowchart LR
 
 - Stale orderbook: the engine skips a symbol when either venue book is older than `STALE_BOOK_MS`.
 - Empty or crossed local book: malformed levels are ignored; impossible opportunities are rejected.
-- Shallow liquidity: executable size is found with a binary search over full-depth VWAP, not just top of book.
+- Shallow liquidity: executable size is matched level-by-level with the same base asset size on both venues, and stops before the first marginal level that no longer clears `MIN_EDGE_BPS`.
 - One-leg failure in live mode: live executor records the failed pair, pauses the engine, and sends an alert so the position can be manually repaired or handled by a future hedge module.
 - Daily loss breach: engine pauses when realized daily PnL is below `-MAX_DAILY_LOSS_USD`.
 - Position imbalance: paper state tracks per-symbol venue exposure and refuses opportunities that would exceed `MAX_POSITION_USD_PER_SYMBOL`.
@@ -62,4 +62,4 @@ flowchart LR
 
 ## Performance Evaluation
 
-The hot path is O(symbols * depth * log(maxNotional)) because each direction uses a small binary search over orderbook depth. With BTC and ETH, depth 20, and a 2.5s loop, the CPU cost is negligible on a laptop. Network latency dominates. Cascade is already read through WebSocket; for lower latency production, keep persistent orderbook streams for both venues instead of polling snapshots.
+The hot path is O(symbols * depth) because each direction walks normalized orderbook levels once. With BTC and ETH, depth 20, and a 2.5s loop, the CPU cost is negligible on a laptop. Network latency dominates. Cascade is already read through WebSocket; for lower latency production, keep persistent orderbook streams for both venues instead of polling snapshots.

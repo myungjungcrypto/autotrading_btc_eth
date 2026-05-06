@@ -4,6 +4,18 @@ Source: user-provided Cascade developer guide, stored here for local reference.
 
 ## Environment
 
+The user-provided onboarding guide below is for Cascade testnet. The production
+trading UI at `https://cascade.xyz/trade/BTC-USD` uses the production engine
+base URL `https://engine.cascade.xyz` for public market data.
+
+Production public orderbook:
+
+```text
+wss://engine.cascade.xyz/ws
+```
+
+Testnet onboarding:
+
 - App: `https://app.cascade.cooking`
 - Engine API: `https://engine.cascade.cooking`
 - Chain: Arbitrum Sepolia
@@ -79,7 +91,13 @@ Authorization: Bearer <token>
 
 ## Public Orderbook
 
-Cascade's current app reads public orderbooks from the engine WebSocket:
+Cascade's production app reads public orderbooks from the engine WebSocket:
+
+```text
+wss://engine.cascade.xyz/ws
+```
+
+The testnet engine uses:
 
 ```text
 wss://engine.cascade.cooking/ws
