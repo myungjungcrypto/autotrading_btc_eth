@@ -66,26 +66,42 @@ try {
   });
 
   let shuttingDown = false;
-  const shutdown = () => {
-    if (shuttingDown) return;
+  const shutdown = (reason = "shutdown", exitCode = 0) => {
+    if (shuttingDown) {
+      logger.warn("forcing shutdown after repeated signal", { reason });
+      process.exit(exitCode);
+    }
     shuttingDown = true;
-    logger.info("shutting down");
+    logger.info("shutting down", { reason });
     engine.stop();
     if (stopReportScheduler) stopReportScheduler();
-    const forceExit = setTimeout(() => process.exit(0), 3000);
-    forceExit.unref();
-    server.close(() => process.exit(0));
+    for (const client of Object.values(clients)) {
+      if (typeof client.close === "function") client.close();
+    }
+    if (typeof server.closeSseClients === "function") server.closeSseClients();
+
+    const forceExit = setTimeout(() => {
+      logger.warn("forced process exit after shutdown timeout", { reason });
+      process.exit(exitCode);
+    }, 2000);
+
+    server.close(() => {
+      clearTimeout(forceExit);
+      process.exit(exitCode);
+    });
+    if (typeof server.closeAllConnections === "function") server.closeAllConnections();
+    if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
   };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => shutdown("SIGINT", 130));
+  process.on("SIGTERM", () => shutdown("SIGTERM", 143));
   process.on("unhandledRejection", (error) => {
     logger.error("unhandled rejection", error);
-    shutdown();
+    shutdown("unhandledRejection", 1);
   });
   process.on("uncaughtException", (error) => {
     logger.error("uncaught exception", error);
-    shutdown();
+    shutdown("uncaughtException", 1);
   });
 } catch (error) {
   logger.error("startup failed", error);

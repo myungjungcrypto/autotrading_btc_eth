@@ -201,6 +201,19 @@ export class CascadeClient {
     this.waiters.clear();
   }
 
+  close() {
+    this.rejectAllWaiters(new Error("Cascade client closed"));
+    const ws = this.ws;
+    this.ws = null;
+    this.connecting = false;
+    if (!ws) return;
+    try {
+      ws.terminate();
+    } catch {
+      // Ignore close failures during shutdown.
+    }
+  }
+
   resetWs(reason) {
     const ws = this.ws;
     this.ws = null;

@@ -18,7 +18,7 @@ export function createAppServer({ config, store, engine, logger }) {
     for (const res of clients) res.write(text);
   });
 
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -60,6 +60,19 @@ export function createAppServer({ config, store, engine, logger }) {
       return json(res, { error: error.message }, 500);
     }
   });
+
+  server.closeSseClients = () => {
+    for (const res of clients) {
+      try {
+        res.end();
+      } catch {
+        // Ignore already-closed dashboard streams.
+      }
+    }
+    clients.clear();
+  };
+
+  return server;
 }
 
 function serveStatic(pathname, res) {
