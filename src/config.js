@@ -12,6 +12,8 @@ export function loadConfig() {
   if (!["paper", "live"].includes(tradingMode)) {
     throw new Error("TRADING_MODE must be paper or live");
   }
+  const entryEdgeBps = envNumber("ENTRY_EDGE_BPS", 50);
+  const exitEdgeBps = envNumber("EXIT_EDGE_BPS", 0);
 
   const cfg = {
     server: {
@@ -32,7 +34,9 @@ export function loadConfig() {
       loopIntervalMs: envNumber("LOOP_INTERVAL_MS", 2500, { min: 250 }),
       orderbookDepth: envNumber("ORDERBOOK_DEPTH", 20, { min: 1 }),
       staleBookMs: envNumber("STALE_BOOK_MS", 5000, { min: 500 }),
-      minEdgeBps: envNumber("MIN_EDGE_BPS", 8),
+      entryEdgeBps,
+      exitEdgeBps,
+      minEdgeBps: entryEdgeBps,
       takerFeeBps: envNumber("TAKER_FEE_BPS", 0),
       slippageBufferBps: envNumber("SLIPPAGE_BUFFER_BPS", 3),
       minTradeUsd: envNumber("MIN_TRADE_USD", 20, { min: 0 }),
@@ -83,6 +87,9 @@ export function loadConfig() {
 
   if (cfg.trading.minTradeUsd > cfg.trading.maxTradeUsd) {
     throw new Error("MIN_TRADE_USD cannot be greater than MAX_TRADE_USD");
+  }
+  if (cfg.trading.exitEdgeBps > cfg.trading.entryEdgeBps) {
+    throw new Error("EXIT_EDGE_BPS cannot be greater than ENTRY_EDGE_BPS");
   }
   if (!["mock", "live"].includes(cfg.runtime.marketDataMode)) {
     throw new Error("MARKET_DATA_MODE must be mock or live");

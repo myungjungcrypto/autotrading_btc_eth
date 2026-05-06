@@ -29,6 +29,34 @@ export function availableNotional(levels) {
   return levels.reduce((sum, level) => sum + level.price * level.size, 0);
 }
 
+export function sumNotional(fills = []) {
+  return fills.reduce((sum, fill) => sum + (fill.notional ?? 0), 0);
+}
+
+export function consumeBaseSize(levels, targetSize) {
+  let remaining = targetSize;
+  let size = 0;
+  let notionalUsd = 0;
+  const fills = [];
+  for (const level of levels) {
+    if (remaining <= 0) break;
+    const takeSize = Math.min(remaining, level.size);
+    const notional = takeSize * level.price;
+    size += takeSize;
+    notionalUsd += notional;
+    remaining -= takeSize;
+    fills.push({ price: level.price, size: takeSize, notional });
+  }
+  if (size <= 0 || notionalUsd <= 0) return null;
+  return {
+    size,
+    notionalUsd,
+    avgPrice: notionalUsd / size,
+    fills,
+    complete: remaining <= 0.000000001,
+  };
+}
+
 export function consumeProfitableDepth({
   buyLevels,
   sellLevels,
@@ -102,6 +130,7 @@ export function consumeProfitableDepth({
     expectedPnlUsd: sellNotional - buyNotional - (buyNotional * costBps) / 10000,
     buyFills,
     sellFills,
+    costBps,
   };
 }
 
@@ -115,17 +144,19 @@ export function evaluateDirection({
 }) {
   if (!buyBook.asks.length || !sellBook.bids.length) return null;
   const costBps = config.takerFeeBps * 2 + config.slippageBufferBps;
+  const entryEdgeBps = config.entryEdgeBps ?? config.minEdgeBps;
   const fill = consumeProfitableDepth({
     buyLevels: buyBook.asks,
     sellLevels: sellBook.bids,
     maxTradeUsd: config.maxTradeUsd,
     minTradeUsd: config.minTradeUsd,
-    minEdgeBps: config.minEdgeBps,
+    minEdgeBps: entryEdgeBps,
     costBps,
   });
 
   if (!fill) return null;
   return {
+    action: "open",
     symbol,
     buyExchange,
     sellExchange,
@@ -138,6 +169,8 @@ export function evaluateDirection({
     expectedPnlUsd: round(fill.expectedPnlUsd, 4),
     buyFills: fill.buyFills,
     sellFills: fill.sellFills,
+    costBps,
+    triggerBps: entryEdgeBps,
   };
 }
 
@@ -163,4 +196,76 @@ export function evaluateArbitrage({ symbol, cascadeBook, risexBook, config }) {
 
   directions.sort((a, b) => b.expectedPnlUsd - a.expectedPnlUsd);
   return directions[0] ?? null;
+}
+
+export function evaluateExitArbitrage({ symbol, position, cascadeBook, risexBook, config }) {
+  if (!position || position.symbol !== symbol) return null;
+  const books = { cascade: cascadeBook, risex: risexBook };
+  const originalBuyBook = books[position.buyExchange];
+  const originalSellBook = books[position.sellExchange];
+  const closeBuyBook = books[position.sellExchange];
+  const closeSellBook = books[position.buyExchange];
+  if (!originalBuyBook || !originalSellBook || !closeBuyBook || !closeSellBook) return null;
+
+  const costBps = config.takerFeeBps * 2 + config.slippageBufferBps;
+  const currentEntryRoute = evaluateFixedSizeRoute({
+    buyBook: originalBuyBook,
+    sellBook: originalSellBook,
+    size: position.size,
+    costBps,
+  });
+  if (!currentEntryRoute) return null;
+  if (currentEntryRoute.netBps > config.exitEdgeBps) return null;
+
+  const closeRoute = evaluateFixedSizeRoute({
+    buyBook: closeBuyBook,
+    sellBook: closeSellBook,
+    size: position.size,
+    costBps,
+  });
+  if (!closeRoute) return null;
+
+  const entryBuyNotional = position.entryBuyNotional ?? position.entryBuyPrice * position.size;
+  const entrySellNotional = position.entrySellNotional ?? position.entrySellPrice * position.size;
+  const entryCostUsd = position.entryCostUsd ?? (entryBuyNotional * costBps) / 10000;
+  const closeCostUsd = (closeRoute.buy.notionalUsd * costBps) / 10000;
+  const pnlUsd =
+    entrySellNotional -
+    entryBuyNotional +
+    closeRoute.sell.notionalUsd -
+    closeRoute.buy.notionalUsd -
+    entryCostUsd -
+    closeCostUsd;
+
+  return {
+    action: "close",
+    symbol,
+    positionId: position.id,
+    buyExchange: position.sellExchange,
+    sellExchange: position.buyExchange,
+    buyPrice: round(closeRoute.buy.avgPrice, 6),
+    sellPrice: round(closeRoute.sell.avgPrice, 6),
+    size: round(position.size, 8),
+    notionalUsd: round(closeRoute.buy.notionalUsd, 2),
+    grossBps: round(closeRoute.grossBps, 3),
+    netBps: round(currentEntryRoute.netBps, 3),
+    exitEdgeBps: config.exitEdgeBps,
+    expectedPnlUsd: round(pnlUsd, 4),
+    buyFills: closeRoute.buy.fills,
+    sellFills: closeRoute.sell.fills,
+    costBps,
+  };
+}
+
+function evaluateFixedSizeRoute({ buyBook, sellBook, size, costBps }) {
+  const buy = consumeBaseSize(buyBook.asks, size);
+  const sell = consumeBaseSize(sellBook.bids, size);
+  if (!buy?.complete || !sell?.complete) return null;
+  const grossBps = bps(sell.avgPrice - buy.avgPrice, buy.avgPrice);
+  return {
+    buy,
+    sell,
+    grossBps,
+    netBps: grossBps - costBps,
+  };
 }

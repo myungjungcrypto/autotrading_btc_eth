@@ -4,8 +4,19 @@ export function isBookStale(book, staleBookMs, now = Date.now()) {
 
 export function checkOpportunityRisk({ opportunity, state, config }) {
   if (!opportunity) return { ok: false, reason: "no_opportunity" };
+  const openPosition = state.openPositions?.[opportunity.symbol];
+  if (opportunity.action === "close") {
+    if (!openPosition) return { ok: false, reason: "no_open_position" };
+    if (openPosition.id !== opportunity.positionId) {
+      return { ok: false, reason: "position_mismatch" };
+    }
+    return { ok: true };
+  }
   if (state.dailyPnlUsd <= -config.maxDailyLossUsd) {
     return { ok: false, reason: "daily_loss_limit" };
+  }
+  if (openPosition) {
+    return { ok: false, reason: "position_already_open" };
   }
 
   const exposure = state.exposure?.[opportunity.symbol] ?? {};

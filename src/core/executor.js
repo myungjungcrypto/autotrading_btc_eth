@@ -9,11 +9,14 @@ export class PaperExecutor {
   }
 
   async execute(opportunity) {
+    const action = opportunity.action ?? "open";
     const trade = {
       id: `paper-${Date.now()}`,
       ts: nowIso(),
       mode: "paper",
       status: "paper_filled",
+      action,
+      positionId: opportunity.positionId,
       symbol: opportunity.symbol,
       buyExchange: opportunity.buyExchange,
       sellExchange: opportunity.sellExchange,
@@ -22,7 +25,7 @@ export class PaperExecutor {
       buyPrice: opportunity.buyPrice,
       sellPrice: opportunity.sellPrice,
       netBps: opportunity.netBps,
-      realizedPnlUsd: round(opportunity.expectedPnlUsd, 4),
+      realizedPnlUsd: action === "close" ? round(opportunity.expectedPnlUsd, 4) : 0,
       rawOpportunity: opportunity,
     };
     this.store.recordTrade(trade);
@@ -40,6 +43,7 @@ export class LiveExecutor {
   }
 
   async execute(opportunity) {
+    const action = opportunity.action ?? "open";
     const clientOrderId = Date.now();
     const buyClient = this.clients[opportunity.buyExchange];
     const sellClient = this.clients[opportunity.sellExchange];
@@ -69,6 +73,8 @@ export class LiveExecutor {
       ts: nowIso(),
       mode: "live",
       status: failed ? "leg_failed" : "submitted",
+      action,
+      positionId: opportunity.positionId,
       symbol: opportunity.symbol,
       buyExchange: opportunity.buyExchange,
       sellExchange: opportunity.sellExchange,

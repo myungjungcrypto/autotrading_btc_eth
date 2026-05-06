@@ -57,6 +57,7 @@
               <tr>
                 <th>Time</th>
                 <th>Symbol</th>
+                <th>Action</th>
                 <th>Route</th>
                 <th>Notional</th>
                 <th>Net bps</th>
@@ -70,13 +71,18 @@
 
       <section class="grid">
         <div class="panel">
+          <h2>Open Positions</h2>
+          <pre id="positions">{}</pre>
+        </div>
+        <div class="panel">
           <h2>Exposure</h2>
           <pre id="exposure">{}</pre>
         </div>
-        <div class="panel">
-          <h2>Today Report</h2>
-          <pre id="report"></pre>
-        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Today Report</h2>
+        <pre id="report"></pre>
       </section>
 
       <section class="panel">

@@ -21,6 +21,7 @@ export function buildDailyReport(state, date = new Date()) {
     `- Trades: ${trades.length}`,
     `- Realized PnL: ${round(pnl, 4)} USD`,
     `- Notional Volume: ${round(volume, 2)} USD`,
+    `- Open Positions: ${Object.keys(state.openPositions ?? {}).length}`,
     `- Engine Status: ${state.status}${state.paused ? " (paused)" : ""}`,
     "",
     "## By Symbol",
@@ -39,7 +40,7 @@ export function buildDailyReport(state, date = new Date()) {
   lines.push("", "## Recent Trades", "");
   for (const trade of trades.slice(0, 20)) {
     lines.push(
-      `- ${trade.ts} ${trade.symbol}: buy ${trade.buyExchange} / sell ${trade.sellExchange}, ` +
+      `- ${trade.ts} ${trade.symbol} ${trade.action ?? "trade"}: buy ${trade.buyExchange} / sell ${trade.sellExchange}, ` +
         `size ${trade.size}, pnl ${round(trade.realizedPnlUsd ?? 0, 4)} USD`,
     );
   }

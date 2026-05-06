@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consumeNotional, evaluateArbitrage } from "../src/core/arbitrage.js";
+import { consumeNotional, evaluateArbitrage, evaluateExitArbitrage } from "../src/core/arbitrage.js";
 import { normalizeOrderbook } from "../src/clients/normalize.js";
 
 test("consumeNotional calculates VWAP across levels", () => {
@@ -174,4 +174,100 @@ test("evaluateArbitrage matches the same base size on both legs", () => {
   assert.equal(opp.size, 1);
   assert.equal(opp.notionalUsd, 100);
   assert.equal(opp.expectedPnlUsd, 10);
+});
+
+test("evaluateExitArbitrage closes when entry spread returns to exit threshold", () => {
+  const cascadeBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    raw: {
+      bids: [[100, 2]],
+      asks: [[100.2, 2]],
+    },
+  });
+  const risexBook = normalizeOrderbook({
+    exchange: "risex",
+    symbol: "BTC",
+    market: "1",
+    raw: {
+      bids: [[100.1, 2]],
+      asks: [[100.3, 2]],
+    },
+  });
+
+  const close = evaluateExitArbitrage({
+    symbol: "BTC",
+    position: {
+      id: "pos-1",
+      symbol: "BTC",
+      buyExchange: "cascade",
+      sellExchange: "risex",
+      size: 1,
+      entryBuyPrice: 100,
+      entrySellPrice: 101,
+      entryBuyNotional: 100,
+      entrySellNotional: 101,
+      entryCostUsd: 0,
+    },
+    cascadeBook,
+    risexBook,
+    config: {
+      exitEdgeBps: 0,
+      takerFeeBps: 0,
+      slippageBufferBps: 0,
+    },
+  });
+
+  assert.equal(close.action, "close");
+  assert.equal(close.buyExchange, "risex");
+  assert.equal(close.sellExchange, "cascade");
+  assert.equal(close.size, 1);
+  assert.equal(close.expectedPnlUsd, 0.7);
+});
+
+test("evaluateExitArbitrage holds while entry spread is still above exit threshold", () => {
+  const cascadeBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    raw: {
+      bids: [[100, 2]],
+      asks: [[100, 2]],
+    },
+  });
+  const risexBook = normalizeOrderbook({
+    exchange: "risex",
+    symbol: "BTC",
+    market: "1",
+    raw: {
+      bids: [[101, 2]],
+      asks: [[101.2, 2]],
+    },
+  });
+
+  const close = evaluateExitArbitrage({
+    symbol: "BTC",
+    position: {
+      id: "pos-1",
+      symbol: "BTC",
+      buyExchange: "cascade",
+      sellExchange: "risex",
+      size: 1,
+      entryBuyPrice: 100,
+      entrySellPrice: 101,
+      entryBuyNotional: 100,
+      entrySellNotional: 101,
+      entryCostUsd: 0,
+    },
+    cascadeBook,
+    risexBook,
+    config: {
+      exitEdgeBps: 0,
+      takerFeeBps: 0,
+      slippageBufferBps: 0,
+    },
+  });
+
+  assert.equal(close, null);
 });

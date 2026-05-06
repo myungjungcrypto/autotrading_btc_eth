@@ -34,6 +34,8 @@ Start conservatively:
 TRADING_MODE=paper
 TRADING_ENABLED=false
 MARKET_DATA_MODE=live
+ENTRY_EDGE_BPS=50
+EXIT_EDGE_BPS=0
 ```
 
 If you previously copied an older `.env`, make sure the market ids are updated:
@@ -43,6 +45,8 @@ CASCADE_BASE_URL=https://engine.cascade.xyz
 CASCADE_ORDERBOOK_TRANSPORT=ws
 CASCADE_WS_PATH=/ws
 CASCADE_ORDERBOOK_TICK_SIZE=0.1
+ENTRY_EDGE_BPS=50
+EXIT_EDGE_BPS=0
 CASCADE_MARKET_BTC=BTC-USD-PERP
 CASCADE_MARKET_ETH=ETH-USD-PERP
 RISEX_MARKET_BTC=1

@@ -12,23 +12,35 @@ export class StateStore {
   }
 
   load() {
+    let state;
     if (existsSync(this.statePath)) {
-      return JSON.parse(readFileSync(this.statePath, "utf8"));
+      state = JSON.parse(readFileSync(this.statePath, "utf8"));
+    } else {
+      state = {
+        startedAt: nowIso(),
+        status: "starting",
+        paused: false,
+        lastTickAt: null,
+        books: {},
+        opportunities: {},
+        trades: [],
+        events: [],
+        exposure: {},
+        openPositions: {},
+        realizedPnlUsd: 0,
+        dailyPnlUsd: 0,
+        lastError: null,
+      };
     }
-    return {
-      startedAt: nowIso(),
-      status: "starting",
-      paused: false,
-      lastTickAt: null,
-      books: {},
-      opportunities: {},
-      trades: [],
-      events: [],
-      exposure: {},
-      realizedPnlUsd: 0,
-      dailyPnlUsd: 0,
-      lastError: null,
-    };
+    state.openPositions ??= {};
+    state.exposure ??= {};
+    state.events ??= [];
+    state.trades ??= [];
+    state.books ??= {};
+    state.opportunities ??= {};
+    state.realizedPnlUsd ??= 0;
+    state.dailyPnlUsd ??= 0;
+    return state;
   }
 
   save() {
@@ -69,10 +81,19 @@ export class StateStore {
   recordTrade(trade) {
     this.state.trades.unshift(trade);
     this.state.trades = this.state.trades.slice(0, 500);
-    if (trade.status === "filled" || trade.status === "paper_filled") {
-      this.state.realizedPnlUsd += trade.realizedPnlUsd ?? 0;
+    if (isRecordedFill(trade)) {
+      if (trade.action === "open") {
+        this.applyExposure(trade);
+        this.state.openPositions[trade.symbol] = openPositionFromTrade(trade);
+      } else if (trade.action === "close") {
+        this.state.realizedPnlUsd += trade.realizedPnlUsd ?? 0;
+        delete this.state.openPositions[trade.symbol];
+        this.state.exposure[trade.symbol] = {};
+      } else {
+        this.state.realizedPnlUsd += trade.realizedPnlUsd ?? 0;
+        this.applyExposure(trade);
+      }
       this.state.dailyPnlUsd = this.calculateDailyPnl();
-      this.applyExposure(trade);
     }
     this.appendEvent("trade.recorded", trade);
   }
@@ -95,4 +116,34 @@ export class StateStore {
     this.state.dailyPnlUsd = this.calculateDailyPnl();
     return structuredClone(this.state);
   }
+}
+
+function isRecordedFill(trade) {
+  return ["filled", "paper_filled", "submitted"].includes(trade.status);
+}
+
+function openPositionFromTrade(trade) {
+  const raw = trade.rawOpportunity ?? {};
+  const entryBuyNotional = sumNotional(raw.buyFills) || trade.notionalUsd;
+  const entrySellNotional = sumNotional(raw.sellFills) || trade.sellPrice * trade.size;
+  return {
+    id: trade.positionId ?? trade.id,
+    symbol: trade.symbol,
+    openedAt: trade.ts,
+    buyExchange: trade.buyExchange,
+    sellExchange: trade.sellExchange,
+    size: trade.size,
+    entryBuyPrice: trade.buyPrice,
+    entrySellPrice: trade.sellPrice,
+    entryBuyNotional,
+    entrySellNotional,
+    entryCostUsd: (entryBuyNotional * (raw.costBps ?? 0)) / 10000,
+    entryNetBps: trade.netBps,
+    triggerBps: raw.triggerBps,
+    mode: trade.mode,
+  };
+}
+
+function sumNotional(fills = []) {
+  return fills.reduce((sum, fill) => sum + (fill.notional ?? 0), 0);
 }

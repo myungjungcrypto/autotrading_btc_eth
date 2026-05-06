@@ -6,6 +6,7 @@ const els = {
   markets: document.querySelector("#markets"),
   opportunities: document.querySelector("#opportunities"),
   trades: document.querySelector("#trades"),
+  positions: document.querySelector("#positions"),
   exposure: document.querySelector("#exposure"),
   report: document.querySelector("#report"),
   events: document.querySelector("#events"),
@@ -55,6 +56,7 @@ function render(state) {
       (trade) => `<tr>
         <td>${new Date(trade.ts).toLocaleString()}</td>
         <td>${trade.symbol}</td>
+        <td>${trade.action ?? "-"}</td>
         <td>${trade.buyExchange} -> ${trade.sellExchange}</td>
         <td>${fmt(trade.notionalUsd, 2)}</td>
         <td>${fmt(trade.netBps, 3)}</td>
@@ -63,6 +65,7 @@ function render(state) {
     )
     .join("");
 
+  els.positions.textContent = JSON.stringify(state.openPositions ?? {}, null, 2);
   els.exposure.textContent = JSON.stringify(state.exposure ?? {}, null, 2);
   els.events.innerHTML = (state.events ?? [])
     .slice(0, 80)
@@ -82,9 +85,6 @@ function marketHtml(symbol, books) {
   return `<div class="market">
     <div class="market-head"><strong>${symbol}</strong><span>${c.market ?? "-"} / ${r.market ?? "-"}</span></div>
     <div class="quote-grid">
-      <span>Cascade mark <strong>${fmt(c.markPrice, 4)}</strong></span>
-      <span>Cascade index <strong>${fmt(c.indexPrice, 4)}</strong></span>
-      <span>Cascade mid <strong>${fmt(c.midpoint, 4)}</strong></span>
       <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong> / ${fmt(c.bids?.[0]?.size, 6)}</span>
       <span>Cascade ask <strong>${fmt(c.bestAsk, 4)}</strong> / ${fmt(c.asks?.[0]?.size, 6)}</span>
       <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong> / ${fmt(r.bids?.[0]?.size, 6)}</span>
@@ -94,13 +94,19 @@ function marketHtml(symbol, books) {
 }
 
 function opportunityHtml(opp) {
+  const action = opp.action ?? "open";
+  const threshold =
+    action === "close"
+      ? `Exit <= ${fmt(opp.exitEdgeBps, 3)} bps`
+      : `Entry >= ${fmt(opp.triggerBps, 3)} bps`;
   return `<div class="opportunity">
-    <div class="opp-head"><strong>${opp.symbol}</strong><span>${opp.buyExchange} -> ${opp.sellExchange}</span></div>
+    <div class="opp-head"><strong>${opp.symbol} ${action}</strong><span>${opp.buyExchange} -> ${opp.sellExchange}</span></div>
     <div class="opp-values">
       <span>Size <strong>${fmt(opp.size, 6)}</strong></span>
       <span>Notional <strong>${fmt(opp.notionalUsd, 2)}</strong></span>
       <span>Net bps <strong>${fmt(opp.netBps, 3)}</strong></span>
       <span>Exp PnL <strong>${fmt(opp.expectedPnlUsd, 4)}</strong></span>
+      <span>${threshold}</span>
     </div>
   </div>`;
 }

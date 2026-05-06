@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { evaluateArbitrage } from "./arbitrage.js";
+import { evaluateArbitrage, evaluateExitArbitrage } from "./arbitrage.js";
 import { isBookStale, checkOpportunityRisk } from "./risk.js";
 import { compactError } from "../lib/logger.js";
 
@@ -70,22 +70,32 @@ export class ArbitrageEngine extends EventEmitter {
       return;
     }
 
-    const opportunity = evaluateArbitrage({
-      symbol,
-      cascadeBook,
-      risexBook,
-      config: this.config,
-    });
+    const state = this.store.snapshot();
+    const openPosition = state.openPositions?.[symbol];
+    const opportunity = openPosition
+      ? evaluateExitArbitrage({
+          symbol,
+          position: openPosition,
+          cascadeBook,
+          risexBook,
+          config: this.config,
+        })
+      : evaluateArbitrage({
+          symbol,
+          cascadeBook,
+          risexBook,
+          config: this.config,
+        });
     this.store.updateOpportunity(symbol, opportunity);
 
     if (!opportunity) {
-      this.emitEvent("opportunity.none", { symbol });
+      this.emitEvent(openPosition ? "position.hold" : "opportunity.none", { symbol });
       return;
     }
 
     const risk = checkOpportunityRisk({
       opportunity,
-      state: this.store.snapshot(),
+      state,
       config: this.config,
     });
     if (!risk.ok) {
