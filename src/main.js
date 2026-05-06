@@ -59,15 +59,21 @@ try {
       url: `http://${cfg.server.host}:${cfg.server.port}`,
       mode: cfg.trading.mode,
       marketDataMode: cfg.runtime.marketDataMode,
+      cascadeOrderbookTransport: cfg.cascade.orderbookTransport,
       liveEnabled: cfg.trading.enabled,
     });
     engine.start();
   });
 
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     logger.info("shutting down");
     engine.stop();
     if (stopReportScheduler) stopReportScheduler();
+    const forceExit = setTimeout(() => process.exit(0), 3000);
+    forceExit.unref();
     server.close(() => process.exit(0));
   };
 
