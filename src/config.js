@@ -31,7 +31,7 @@ export function loadConfig() {
       mode: tradingMode,
       enabled: envBool("TRADING_ENABLED", false),
       symbols,
-      loopIntervalMs: envNumber("LOOP_INTERVAL_MS", 500, { min: 250 }),
+      loopIntervalMs: envNumber("LOOP_INTERVAL_MS", 50, { min: 50 }),
       orderbookDepth: envNumber("ORDERBOOK_DEPTH", 20, { min: 1 }),
       staleBookMs: envNumber("STALE_BOOK_MS", 15000, { min: 500 }),
       entryEdgeBps,
