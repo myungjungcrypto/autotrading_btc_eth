@@ -9,7 +9,7 @@ export class CascadeClient {
     this.ws = null;
     this.connecting = false;
     this.nextRequestId = 1;
-    this.subscribedMarkets = new Set();
+    this.subscribedMarkets = new Set(Object.values(config.markets ?? {}).filter(Boolean));
     this.books = new Map();
     this.waiters = new Map();
   }
@@ -145,20 +145,27 @@ export class CascadeClient {
   waitForBook(symbol, market, depth) {
     return new Promise((resolve, reject) => {
       let settled = false;
-      const timeout = setTimeout(() => {
-        finish(null, new Error(`Cascade orderbook timeout for ${market}`));
-      }, this.config.timeoutMs ?? 8000);
+      let waiter = null;
 
       const finish = (book, error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        removeWaiter(this.waiters, market, waiter);
         if (error) reject(error);
         else resolve(book);
       };
 
+      const timeout = setTimeout(() => {
+        const error = new Error(`Cascade orderbook timeout for ${market}`);
+        finish(null, error);
+        this.books.delete(market);
+        this.resetWs(error.message);
+      }, this.config.timeoutMs ?? 8000);
+
       const waiters = this.waiters.get(market) ?? [];
-      waiters.push({ symbol, market, depth, finish });
+      waiter = { symbol, market, depth, finish };
+      waiters.push(waiter);
       this.waiters.set(market, waiters);
     });
   }
@@ -174,7 +181,7 @@ export class CascadeClient {
         bids: mapToLevels(book.bids, "bid").slice(0, depth),
         asks: mapToLevels(book.asks, "ask").slice(0, depth),
       },
-      receivedAt: book.receivedAt,
+      receivedAt: this.ws?.readyState === WebSocket.OPEN ? Date.now() : book.receivedAt,
     });
   }
 
@@ -192,6 +199,19 @@ export class CascadeClient {
       for (const waiter of waiters) waiter.finish(null, error);
     }
     this.waiters.clear();
+  }
+
+  resetWs(reason) {
+    const ws = this.ws;
+    this.ws = null;
+    this.connecting = false;
+    if (!ws) return;
+    this.logger.warn("Cascade WS reconnecting", { reason });
+    try {
+      ws.terminate();
+    } catch {
+      // Ignore termination failures during reconnect.
+    }
   }
 
   wsUrl() {
@@ -247,4 +267,13 @@ function applyLevelDeltas(map, levels = []) {
 
 function mapToLevels(map, side) {
   return [...map.values()].sort((a, b) => (side === "bid" ? b.price - a.price : a.price - b.price));
+}
+
+function removeWaiter(waitersByMarket, market, waiter) {
+  if (!waiter) return;
+  const waiters = waitersByMarket.get(market);
+  if (!waiters) return;
+  const next = waiters.filter((item) => item !== waiter);
+  if (next.length) waitersByMarket.set(market, next);
+  else waitersByMarket.delete(market);
 }
