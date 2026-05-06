@@ -1,0 +1,107 @@
+# Amazon Linux 2023 Deployment
+
+This guide assumes the EC2 instance is already provisioned and you can SSH into it.
+
+## 1. Install runtime
+
+Use Node.js 20 or newer.
+
+```bash
+sudo dnf update -y
+sudo dnf install -y git
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo dnf install -y nodejs
+node --version
+npm --version
+```
+
+## 2. Clone the repository
+
+```bash
+sudo mkdir -p /opt/cascade-risex-arbi
+sudo chown ec2-user:ec2-user /opt/cascade-risex-arbi
+git clone https://github.com/myungjungcrypto/autotrading_btc_eth.git /opt/cascade-risex-arbi/app
+cd /opt/cascade-risex-arbi/app
+npm install
+cp .env.example .env
+```
+
+Edit `.env` on the server and put real credentials only on the EC2 instance. Do not commit `.env`.
+
+Start conservatively:
+
+```bash
+TRADING_MODE=paper
+TRADING_ENABLED=false
+MARKET_DATA_MODE=live
+```
+
+Switch to live trading only after live market data, balances, Telegram alerts, and paper fills look correct:
+
+```bash
+TRADING_MODE=live
+TRADING_ENABLED=true
+MARKET_DATA_MODE=live
+```
+
+## 3. Verify manually
+
+```bash
+npm run check
+npm test
+npm start
+```
+
+Open the dashboard through your chosen tunnel, reverse proxy, or security-group rule:
+
+```text
+http://EC2_PUBLIC_IP:8787
+```
+
+For a trading bot, prefer not exposing the dashboard publicly. Use SSH tunneling when possible:
+
+```bash
+ssh -L 8787:127.0.0.1:8787 ec2-user@EC2_PUBLIC_IP
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8787
+```
+
+## 4. Install systemd service
+
+```bash
+sudo cp ops/systemd/cascade-risex-arbi.service /etc/systemd/system/cascade-risex-arbi.service
+sudo systemctl daemon-reload
+sudo systemctl enable cascade-risex-arbi
+sudo systemctl start cascade-risex-arbi
+sudo systemctl status cascade-risex-arbi
+```
+
+Logs:
+
+```bash
+journalctl -u cascade-risex-arbi -f
+```
+
+Restart after pulling updates:
+
+```bash
+cd /opt/cascade-risex-arbi/app
+git pull
+npm install
+npm run check
+npm test
+sudo systemctl restart cascade-risex-arbi
+```
+
+## 5. Operational checklist
+
+- Keep `.env` only on EC2.
+- Start in `paper` mode and verify orderbook freshness.
+- Confirm Telegram completion and failure alerts.
+- Confirm daily report time in the server timezone.
+- Keep `MAX_POSITION_NOTIONAL_USD` and `MAX_DAILY_LOSS_USD` small until live fills are verified.
+- Watch for `leg_failed` events; the engine pauses automatically after a partial execution failure.

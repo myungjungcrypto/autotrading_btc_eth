@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cascade RISEx Arbitrage</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="topbar">
+        <div>
+          <h1>Arbitrage Dashboard</h1>
+          <p>Cascade x RISEx delta-neutral monitor</p>
+        </div>
+        <div class="actions">
+          <button id="pauseBtn" type="button">Pause</button>
+          <button id="resumeBtn" type="button">Resume</button>
+        </div>
+      </header>
+
+      <section class="metrics" aria-label="Metrics">
+        <div>
+          <span>Status</span>
+          <strong id="status">-</strong>
+        </div>
+        <div>
+          <span>Mode</span>
+          <strong id="mode">-</strong>
+        </div>
+        <div>
+          <span>Daily PnL</span>
+          <strong id="dailyPnl">-</strong>
+        </div>
+        <div>
+          <span>Total PnL</span>
+          <strong id="totalPnl">-</strong>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>Markets</h2>
+          <div id="markets" class="market-list"></div>
+        </div>
+        <div class="panel">
+          <h2>Opportunities</h2>
+          <div id="opportunities" class="opportunity-list"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Recent Trades</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Symbol</th>
+                <th>Route</th>
+                <th>Notional</th>
+                <th>Net bps</th>
+                <th>PnL</th>
+              </tr>
+            </thead>
+            <tbody id="trades"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>Exposure</h2>
+          <pre id="exposure">{}</pre>
+        </div>
+        <div class="panel">
+          <h2>Today Report</h2>
+          <pre id="report"></pre>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Events</h2>
+        <div id="events" class="events"></div>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

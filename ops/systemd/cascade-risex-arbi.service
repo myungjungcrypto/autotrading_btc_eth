@@ -1,0 +1,19 @@
+[Unit]
+Description=Cascade RISEx arbitrage bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/cascade-risex-arbi/app
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/cascade-risex-arbi/app/.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
