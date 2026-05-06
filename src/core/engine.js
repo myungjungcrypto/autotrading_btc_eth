@@ -36,7 +36,15 @@ export class ArbitrageEngine extends EventEmitter {
     this.inTick = true;
     try {
       for (const symbol of this.config.symbols) {
-        await this.evaluateSymbol(symbol);
+        try {
+          await this.evaluateSymbol(symbol);
+        } catch (error) {
+          const details = compactError(error);
+          this.store.state.lastError = details;
+          this.store.appendEvent("symbol.error", { symbol, ...details });
+          this.emitEvent("symbol.error", { symbol, ...details });
+          this.logger.error(`symbol ${symbol} failed`, error);
+        }
       }
       this.emitEvent("tick.completed", {});
     } catch (error) {

@@ -45,6 +45,7 @@ If you previously copied an older `.env`, make sure the market ids are updated:
 ```bash
 CASCADE_BASE_URL=https://engine.cascade.xyz
 CASCADE_TIMEOUT_MS=15000
+CASCADE_RESUBSCRIBE_MS=5000
 CASCADE_ORDERBOOK_TRANSPORT=ws
 CASCADE_WS_PATH=/ws
 CASCADE_ORDERBOOK_TICK_SIZE=0.1

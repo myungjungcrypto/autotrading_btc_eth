@@ -113,6 +113,7 @@ export class CascadeClient {
 
   handleWsMessage(payload) {
     if (payload.error) {
+      if (String(payload.error.message ?? "").toLowerCase().includes("already subscribed")) return;
       const error = new Error(`Cascade WS error: ${payload.error.message ?? "unknown"}`);
       this.rejectAllWaiters(error);
       throw error;
@@ -146,11 +147,19 @@ export class CascadeClient {
     return new Promise((resolve, reject) => {
       let settled = false;
       let waiter = null;
+      const reconnect = setTimeout(() => {
+        const error = new Error(`Cascade orderbook snapshot pending for ${market}`);
+        this.logger.warn("Cascade orderbook snapshot still pending; reconnecting", { market });
+        finish(null, error);
+        this.books.delete(market);
+        this.resetWs(error.message);
+      }, this.config.resubscribeMs ?? 3000);
 
       const finish = (book, error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        clearTimeout(reconnect);
         removeWaiter(this.waiters, market, waiter);
         if (error) reject(error);
         else resolve(book);
