@@ -6,6 +6,12 @@ export class CascadeClient {
   constructor(config, logger) {
     this.config = config;
     this.logger = logger;
+    this.ws = null;
+    this.connecting = false;
+    this.nextRequestId = 1;
+    this.subscribedMarkets = new Set();
+    this.books = new Map();
+    this.waiters = new Map();
   }
 
   url(path) {
@@ -39,14 +45,106 @@ export class CascadeClient {
 
   async getOrderbookFromWs(symbol, depth) {
     const market = this.config.markets[symbol];
-    const wsUrl = this.wsUrl();
+    this.ensureWs();
+    this.subscribeMarket(market);
 
+    const cached = this.bookFromCache(symbol, market, depth);
+    if (cached) return cached;
+
+    return this.waitForBook(symbol, market, depth);
+  }
+
+  ensureWs() {
+    if (this.ws && [WebSocket.OPEN, WebSocket.CONNECTING].includes(this.ws.readyState)) return;
+    const wsUrl = this.wsUrl();
+    this.connecting = true;
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.on("open", () => {
+      this.connecting = false;
+      for (const market of this.subscribedMarkets) this.sendBookSubscribe(market);
+      this.logger.info("Cascade WS connected", { url: wsUrl, markets: [...this.subscribedMarkets] });
+    });
+
+    this.ws.on("message", (data) => {
+      try {
+        this.handleWsMessage(JSON.parse(String(data)));
+      } catch (error) {
+        this.logger.warn("Cascade WS message parse failed", { message: error.message });
+      }
+    });
+
+    this.ws.on("close", () => {
+      this.connecting = false;
+      this.ws = null;
+      this.rejectAllWaiters(new Error("Cascade WS closed before orderbook snapshot"));
+      this.logger.warn("Cascade WS closed");
+    });
+
+    this.ws.on("error", (error) => {
+      this.connecting = false;
+      this.ws = null;
+      this.rejectAllWaiters(error);
+      this.logger.warn("Cascade WS error", { message: error.message });
+    });
+  }
+
+  subscribeMarket(market) {
+    if (this.subscribedMarkets.has(market)) return;
+    this.subscribedMarkets.add(market);
+    if (this.ws?.readyState === WebSocket.OPEN) this.sendBookSubscribe(market);
+  }
+
+  sendBookSubscribe(market) {
+    this.ws.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "subscribe",
+        params: {
+          source: "book",
+          symbol: market,
+          tickSize: this.config.orderbookTickSize,
+        },
+        id: this.nextRequestId,
+      }),
+    );
+    this.nextRequestId += 1;
+  }
+
+  handleWsMessage(payload) {
+    if (payload.error) {
+      const error = new Error(`Cascade WS error: ${payload.error.message ?? "unknown"}`);
+      this.rejectAllWaiters(error);
+      throw error;
+    }
+    const data = payload.data;
+    if (!data?.symbol || (!Array.isArray(data.bids) && !Array.isArray(data.asks))) return;
+
+    const type = String(payload.type ?? "").toLowerCase();
+    if (type.includes("snapshot")) {
+      this.books.set(data.symbol, {
+        bids: levelsToMap(data.bids),
+        asks: levelsToMap(data.asks),
+        receivedAt: Date.now(),
+        sequenceNumber: data.sequenceNumber,
+      });
+    } else if (type.includes("delta")) {
+      const book = this.books.get(data.symbol);
+      if (!book) return;
+      applyLevelDeltas(book.bids, data.bids);
+      applyLevelDeltas(book.asks, data.asks);
+      book.receivedAt = Date.now();
+      book.sequenceNumber = data.sequenceNumber ?? book.sequenceNumber;
+    } else {
+      return;
+    }
+
+    this.resolveWaiters(data.symbol);
+  }
+
+  waitForBook(symbol, market, depth) {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
       let settled = false;
-      let bookPayload = null;
-      let pricePayload = null;
-      let graceTimer = null;
       const timeout = setTimeout(() => {
         finish(null, new Error(`Cascade orderbook timeout for ${market}`));
       }, this.config.timeoutMs ?? 8000);
@@ -55,92 +153,45 @@ export class CascadeClient {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        if (graceTimer) clearTimeout(graceTimer);
-        try {
-          ws.terminate();
-        } catch {
-          // Ignore close failures while resolving a completed fetch.
-        }
         if (error) reject(error);
         else resolve(book);
       };
 
-      const maybeFinish = () => {
-        if (!bookPayload) return;
-        if (!pricePayload && !graceTimer) {
-          graceTimer = setTimeout(maybeFinish, 250);
-          return;
-        }
-        finish(
-          normalizeOrderbook({
-            exchange: "cascade",
-            symbol,
-            market,
-            raw: {
-              bids: bookPayload.bids.slice(0, depth),
-              asks: bookPayload.asks.slice(0, depth),
-              mark: pricePayload?.mark,
-              index: pricePayload?.index,
-              midpoint: pricePayload?.midpoint,
-              spread: pricePayload?.spread,
-            },
-          }),
-        );
-      };
-
-      ws.on("open", () => {
-        ws.send(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            method: "subscribe",
-            params: {
-              source: "book",
-              symbol: market,
-              tickSize: this.config.orderbookTickSize,
-            },
-            id: 1,
-          }),
-        );
-        ws.send(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            method: "subscribe",
-            params: {
-              source: "price",
-              symbols: [market],
-            },
-            id: 2,
-          }),
-        );
-      });
-
-      ws.on("message", (data) => {
-        try {
-          const payload = JSON.parse(String(data));
-          if (payload.error) {
-            finish(null, new Error(`Cascade WS error: ${payload.error.message ?? "unknown"}`));
-            return;
-          }
-          const bookData = payload.data;
-          if (!bookData || bookData.symbol !== market) return;
-          if (bookData.bids && bookData.asks && payload.type === "Book Snapshot") {
-            bookPayload = bookData;
-            maybeFinish();
-            return;
-          }
-          if (bookData.mark || bookData.index || bookData.midpoint) {
-            pricePayload = bookData;
-            maybeFinish();
-          }
-        } catch (error) {
-          finish(null, error);
-        }
-      });
-
-      ws.on("error", (error) => {
-        finish(null, error);
-      });
+      const waiters = this.waiters.get(market) ?? [];
+      waiters.push({ symbol, market, depth, finish });
+      this.waiters.set(market, waiters);
     });
+  }
+
+  bookFromCache(symbol, market, depth) {
+    const book = this.books.get(market);
+    if (!book) return null;
+    return normalizeOrderbook({
+      exchange: "cascade",
+      symbol,
+      market,
+      raw: {
+        bids: mapToLevels(book.bids, "bid").slice(0, depth),
+        asks: mapToLevels(book.asks, "ask").slice(0, depth),
+      },
+      receivedAt: book.receivedAt,
+    });
+  }
+
+  resolveWaiters(market) {
+    const waiters = this.waiters.get(market);
+    if (!waiters?.length) return;
+    this.waiters.delete(market);
+    for (const waiter of waiters) {
+      waiter.finish(this.bookFromCache(waiter.symbol, waiter.market, waiter.depth));
+    }
+  }
+
+  rejectAllWaiters(error) {
+    for (const waiters of this.waiters.values()) {
+      for (const waiter of waiters) waiter.finish(null, error);
+    }
+    this.waiters.clear();
   }
 
   wsUrl() {
@@ -176,4 +227,24 @@ export class CascadeClient {
       retries: 0,
     });
   }
+}
+
+function levelsToMap(levels = []) {
+  const map = new Map();
+  applyLevelDeltas(map, levels);
+  return map;
+}
+
+function applyLevelDeltas(map, levels = []) {
+  for (const level of levels) {
+    const price = Number(level.price ?? level[0]);
+    const quantity = Number(level.quantity ?? level.size ?? level[1]);
+    if (!Number.isFinite(price) || !Number.isFinite(quantity)) continue;
+    if (quantity <= 0) map.delete(price);
+    else map.set(price, { price, quantity });
+  }
+}
+
+function mapToLevels(map, side) {
+  return [...map.values()].sort((a, b) => (side === "bid" ? b.price - a.price : a.price - b.price));
 }

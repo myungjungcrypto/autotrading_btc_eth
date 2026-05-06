@@ -52,6 +52,7 @@ export function loadConfig() {
       name: "cascade",
       baseUrl: envString("CASCADE_BASE_URL", "https://engine.cascade.xyz"),
       jwt: envString("CASCADE_JWT"),
+      timeoutMs: envNumber("CASCADE_TIMEOUT_MS", 15000, { min: 1000 }),
       orderbookTransport: envString("CASCADE_ORDERBOOK_TRANSPORT", "ws"),
       wsPath: envString("CASCADE_WS_PATH", "/ws"),
       orderbookTickSize: envNumber("CASCADE_ORDERBOOK_TICK_SIZE", 0.1, { min: 0.000001 }),
