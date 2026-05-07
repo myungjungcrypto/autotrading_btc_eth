@@ -7,6 +7,7 @@ export class RisexClient {
     this.config = config;
     this.logger = logger;
     this.marketsCache = null;
+    this.lastOrderbookLogAt = new Map();
   }
 
   url(path) {
@@ -46,18 +47,42 @@ export class RisexClient {
   }
 
   async getOrderbook(symbol, depth) {
+    const startedAt = Date.now();
     const market = await this.resolveMarket(symbol);
     const raw = await requestJson(
       withQuery(this.url("/orderbook"), {
         market_id: market.market_id,
         limit: depth,
       }),
+      {
+        timeoutMs: this.config.timeoutMs ?? 2500,
+        retries: this.config.retries ?? 0,
+      },
     );
-    return normalizeOrderbook({
+    const book = normalizeOrderbook({
       exchange: "risex",
       symbol,
       market: market.market_id,
       raw: raw.data ?? raw,
+    });
+    book.latencyMs = Date.now() - startedAt;
+    this.logOrderbook(symbol, book);
+    return book;
+  }
+
+  logOrderbook(symbol, book) {
+    const interval = this.config.logIntervalMs ?? 10000;
+    if (interval <= 0) return;
+    const now = Date.now();
+    const last = this.lastOrderbookLogAt.get(symbol) ?? 0;
+    if (now - last < interval) return;
+    this.lastOrderbookLogAt.set(symbol, now);
+    this.logger.info("RISEx orderbook", {
+      symbol,
+      market: book.market,
+      bestBid: book.bestBid,
+      bestAsk: book.bestAsk,
+      latencyMs: book.latencyMs,
     });
   }
 

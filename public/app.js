@@ -31,6 +31,14 @@ function pnlClass(value) {
   return Number(value) >= 0 ? "positive" : "negative";
 }
 
+function ageLabel(receivedAt) {
+  if (!receivedAt) return "-";
+  const age = Date.now() - new Date(receivedAt).getTime();
+  if (!Number.isFinite(age)) return "-";
+  if (age < 1000) return `${age}ms`;
+  return `${(age / 1000).toFixed(1)}s`;
+}
+
 function render(state) {
   els.status.textContent = `${state.status}${state.paused ? " paused" : ""}`;
   els.mode.textContent = `${cfg?.trading?.mode ?? "-"} / ${cfg?.runtime?.marketDataMode ?? "-"}${
@@ -85,9 +93,9 @@ function marketHtml(symbol, books) {
   return `<div class="market">
     <div class="market-head"><strong>${symbol}</strong><span>${c.market ?? "-"} / ${r.market ?? "-"}</span></div>
     <div class="quote-grid">
-      <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong> / ${fmt(c.bids?.[0]?.size, 6)}</span>
+      <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong> / ${fmt(c.bids?.[0]?.size, 6)} <small>age ${ageLabel(c.receivedAt)} / ${fmt(c.latencyMs, 0)}ms</small></span>
       <span>Cascade ask <strong>${fmt(c.bestAsk, 4)}</strong> / ${fmt(c.asks?.[0]?.size, 6)}</span>
-      <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong> / ${fmt(r.bids?.[0]?.size, 6)}</span>
+      <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong> / ${fmt(r.bids?.[0]?.size, 6)} <small>age ${ageLabel(r.receivedAt)} / ${fmt(r.latencyMs, 0)}ms</small></span>
       <span>RISEx ask <strong>${fmt(r.bestAsk, 4)}</strong> / ${fmt(r.asks?.[0]?.size, 6)}</span>
     </div>
   </div>`;

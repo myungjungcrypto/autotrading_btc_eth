@@ -23,8 +23,11 @@ export class CascadeClient {
   }
 
   async getOrderbook(symbol, depth) {
+    const startedAt = Date.now();
     if (this.config.orderbookTransport === "ws") {
-      return this.getOrderbookFromWs(symbol, depth);
+      const book = await this.getOrderbookFromWs(symbol, depth);
+      book.latencyMs = Date.now() - startedAt;
+      return book;
     }
 
     const market = this.config.markets[symbol];
@@ -35,12 +38,14 @@ export class CascadeClient {
       }),
       { headers: this.authHeaders() },
     );
-    return normalizeOrderbook({
+    const book = normalizeOrderbook({
       exchange: "cascade",
       symbol,
       market,
       raw,
     });
+    book.latencyMs = Date.now() - startedAt;
+    return book;
   }
 
   async getOrderbookFromWs(symbol, depth) {

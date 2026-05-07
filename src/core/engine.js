@@ -35,16 +35,17 @@ export class ArbitrageEngine extends EventEmitter {
     if (this.inTick || this.store.state.paused) return;
     this.inTick = true;
     try {
-      for (const symbol of this.config.symbols) {
-        try {
-          await this.evaluateSymbol(symbol);
-        } catch (error) {
-          const details = compactError(error);
-          this.store.state.lastError = details;
-          this.store.appendEvent("symbol.error", { symbol, ...details });
-          this.emitEvent("symbol.error", { symbol, ...details });
-          this.logger.error(`symbol ${symbol} failed`, error);
-        }
+      const results = await Promise.allSettled(
+        this.config.symbols.map((symbol) => this.evaluateSymbol(symbol)),
+      );
+      for (let i = 0; i < results.length; i += 1) {
+        if (results[i].status === "fulfilled") continue;
+        const symbol = this.config.symbols[i];
+        const details = compactError(results[i].reason);
+        this.store.state.lastError = details;
+        this.store.appendEvent("symbol.error", { symbol, ...details });
+        this.emitEvent("symbol.error", { symbol, ...details });
+        this.logger.error(`symbol ${symbol} failed`, results[i].reason);
       }
       this.emitEvent("tick.completed", {});
     } catch (error) {
@@ -131,6 +132,7 @@ function stripRawBook(book) {
     receivedAt: book.receivedAt,
     bestBid: book.bestBid,
     bestAsk: book.bestAsk,
+    latencyMs: book.latencyMs,
     bids: book.bids.slice(0, 10),
     asks: book.asks.slice(0, 10),
   };

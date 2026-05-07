@@ -55,6 +55,9 @@ CASCADE_MARKET_BTC=BTC-USD-PERP
 CASCADE_MARKET_ETH=ETH-USD-PERP
 RISEX_MARKET_BTC=1
 RISEX_MARKET_ETH=2
+RISEX_TIMEOUT_MS=2500
+RISEX_RETRIES=0
+RISEX_LOG_INTERVAL_MS=10000
 ```
 
 Switch to live trading only after live market data, balances, Telegram alerts, and paper fills look correct:

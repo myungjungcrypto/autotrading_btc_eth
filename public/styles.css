@@ -150,6 +150,12 @@ button + button {
   color: var(--text);
 }
 
+.quote-grid small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
 .opp-values {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
