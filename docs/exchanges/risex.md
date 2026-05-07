@@ -4,12 +4,38 @@ Sources:
 
 - `https://docs.risechain.com/docs/risex`
 - `https://developer.rise.trade/reference/general-information`
+- `https://developer.rise.trade/reference/orderbook-channel`
 - `https://developer.rise.trade/reference/authservice_registersigner`
 
 ## Base URLs
 
 - REST testnet: `https://api.testnet.rise.trade/v1`
 - WebSocket testnet variable in docs: `wss://ws.testnet.rise.trade/ws`
+
+## WebSocket Orderbook Channel
+
+RISEx public orderbook data should use the WebSocket stream instead of high-frequency REST polling.
+
+Subscribe:
+
+```json
+{
+  "method": "subscribe",
+  "params": {
+    "channel": "orderbook",
+    "market_ids": [1, 2]
+  }
+}
+```
+
+The channel sends an initial snapshot and then `update` messages containing modified price levels. Removed levels are sent with `quantity: "0"`.
+
+Official notes:
+
+- Channel: `orderbook`
+- Authentication: not required
+- WebSocket rate limit: 10 requests/s
+- Updates are throttled to at most 4 updates/s per market (250ms bucket)
 
 ## Useful REST Routes
 

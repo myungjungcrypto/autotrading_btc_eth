@@ -26,7 +26,7 @@ Open `http://127.0.0.1:8787`.
 
 Cascade public docs provided in this repository confirm auth and JWT usage for the testnet engine. The default market-data endpoint is the production Cascade engine behind `https://cascade.xyz/trade/BTC-USD`, because that is the screen this bot is meant to compare against RISEx. Public orderbook data is read from the Cascade engine WebSocket using the app's `source=book` subscription format. Live order placement routes are still configurable through `.env` until Cascade publishes the full order schema.
 
-RISEx routes are verified from the official docs. RISEx live order submission requires a valid permit. On testnet only, RISEx docs expose a server-signing escape hatch via `signer_private_key`; this app supports it only when `RISEX_ENABLE_TESTNET_SERVER_SIGNING=true`. For production, replace that with client-side EIP-712 permit signing before enabling live trading.
+RISEx routes are verified from the official docs. Public orderbook data uses the RISEx `orderbook` WebSocket channel by default, so the 50ms engine loop reads the latest local cache instead of hammering the REST API. RISEx live order submission requires a valid permit. On testnet only, RISEx docs expose a server-signing escape hatch via `signer_private_key`; this app supports it only when `RISEX_ENABLE_TESTNET_SERVER_SIGNING=true`. For production, replace that with client-side EIP-712 permit signing before enabling live trading.
 
 See [docs/architecture.md](docs/architecture.md) for architecture, data flow, edge cases, error handling, and performance notes.
 

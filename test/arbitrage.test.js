@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { consumeNotional, evaluateArbitrage, evaluateExitArbitrage } from "../src/core/arbitrage.js";
 import { normalizeOrderbook } from "../src/clients/normalize.js";
+import { RisexClient } from "../src/clients/risex.js";
 
 test("consumeNotional calculates VWAP across levels", () => {
   const result = consumeNotional(
@@ -271,3 +272,53 @@ test("evaluateExitArbitrage holds while entry spread is still above exit thresho
 
   assert.equal(close, null);
 });
+
+test("RisexClient applies WebSocket orderbook snapshots and deltas", () => {
+  const client = new RisexClient(
+    {
+      markets: { BTC: "1" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://ws.testnet.rise.trade/ws",
+    },
+    noopLogger(),
+  );
+
+  client.handleWsMessage({
+    channel: "orderbook",
+    data: {
+      market_id: 1,
+      bids: [{ price: "100000000000000000000", quantity: "1000000000000000000" }],
+      asks: [{ price: "101", quantity: "2" }],
+    },
+    timestamp: String(Date.now() * 1_000_000),
+  });
+
+  const snapshot = client.bookFromCache("BTC", "1", 10);
+  assert.equal(snapshot.bestBid, 100);
+  assert.equal(snapshot.bestAsk, 101);
+  assert.equal(snapshot.bids[0].size, 1);
+
+  client.handleWsMessage({
+    channel: "orderbook",
+    type: "update",
+    market_id: "1",
+    data: {
+      market_id: 1,
+      bids: [{ price: "100000000000000000000", quantity: "0" }],
+      asks: [{ price: "102", quantity: "1.5" }],
+    },
+  });
+
+  const updated = client.bookFromCache("BTC", "1", 10);
+  assert.equal(updated.bestBid, null);
+  assert.equal(updated.bestAsk, 101);
+  assert.equal(updated.asks[1].price, 102);
+});
+
+function noopLogger() {
+  return {
+    info() {},
+    warn() {},
+    error() {},
+  };
+}

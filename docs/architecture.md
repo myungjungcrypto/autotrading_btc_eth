@@ -4,7 +4,7 @@
 
 The system is a single Node.js service with four layers:
 
-1. Exchange adapters normalize Cascade WebSocket and RISEx REST APIs into a common orderbook and order interface. A mock adapter is available for local smoke tests.
+1. Exchange adapters normalize Cascade and RISEx WebSocket orderbook streams into a common orderbook and order interface. REST remains available for account, history, and fallback operations. A mock adapter is available for local smoke tests.
 2. The arbitrage engine evaluates BTC and ETH two-leg opportunities in both directions, opens one position per symbol, and then watches that position for an exit spread.
 3. Executors apply safety policy. `paper` mode records simulated open/close fills. `live` mode is gated and sends IOC-style paired orders through adapters.
 4. The dashboard, Telegram notifier, and daily report read from the same state store.
@@ -32,7 +32,7 @@ test/             Node test runner unit tests
 ```mermaid
 flowchart LR
   C["Cascade WS"] --> N["Normalize Orderbook"]
-  R["RISEx REST"] --> N
+  R["RISEx WS"] --> N
   N --> E["Arbitrage Engine"]
   E --> X["Executor: paper or live"]
   X --> S["State Store JSONL"]
@@ -56,6 +56,7 @@ flowchart LR
 ## Error Management
 
 - HTTP calls use timeout and retry with exponential backoff.
+- WebSocket orderbook clients keep local depth caches, resubscribe while snapshots are pending, and reconnect on snapshot timeout or socket close.
 - Every tick emits an event with either opportunities, skips, or errors.
 - State changes are appended to JSONL before being exposed to the dashboard.
 - Telegram failures are logged but do not crash the trading loop.
@@ -63,4 +64,4 @@ flowchart LR
 
 ## Performance Evaluation
 
-The hot path is O(symbols * depth) because each entry or exit direction walks normalized orderbook levels once. BTC and ETH are evaluated in parallel. With depth 20 and a 50ms target loop, the CPU cost is still small on a small EC2 instance. Network latency dominates. Cascade is read through a persistent WebSocket orderbook cache; RISEx is currently polled through REST with a per-symbol throttle and 429 backoff, so its response time and rate limits determine the practical lower bound. RISEx orderbook latency, age, and rate-limit state are logged periodically and displayed on the dashboard.
+The hot path is O(symbols * depth) because each entry or exit direction walks normalized orderbook levels once. BTC and ETH are evaluated in parallel. With depth 20 and a 50ms target loop, the CPU cost is still small on a small EC2 instance. Network latency dominates initial snapshots, but steady-state decisions read local WebSocket caches for both venues. RISEx documentation currently throttles orderbook stream updates to a maximum of 4 updates per second per market, so the 50ms engine loop can react as soon as the newest streamed book is present but cannot make RISEx publish faster than its 250ms bucket.

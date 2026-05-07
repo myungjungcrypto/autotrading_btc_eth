@@ -60,6 +60,7 @@ try {
       mode: cfg.trading.mode,
       marketDataMode: cfg.runtime.marketDataMode,
       cascadeOrderbookTransport: cfg.cascade.orderbookTransport,
+      risexOrderbookTransport: cfg.risex.orderbookTransport,
       liveEnabled: cfg.trading.enabled,
     });
     engine.start();

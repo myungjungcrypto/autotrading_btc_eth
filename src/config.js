@@ -77,6 +77,9 @@ export function loadConfig() {
       apiPrefix: envString("RISEX_API_PREFIX", "/v1"),
       timeoutMs: envNumber("RISEX_TIMEOUT_MS", 2500, { min: 100 }),
       retries: envNumber("RISEX_RETRIES", 0, { min: 0 }),
+      orderbookTransport: envString("RISEX_ORDERBOOK_TRANSPORT", "ws"),
+      wsUrl: envString("RISEX_WS_URL", "wss://ws.testnet.rise.trade/ws"),
+      wsResubscribeMs: envNumber("RISEX_WS_RESUBSCRIBE_MS", 5000, { min: 500 }),
       pollIntervalMs: envNumber("RISEX_POLL_INTERVAL_MS", 1000, { min: 50 }),
       rateLimitBackoffMs: envNumber("RISEX_RATE_LIMIT_BACKOFF_MS", 10000, { min: 1000 }),
       logIntervalMs: envNumber("RISEX_LOG_INTERVAL_MS", 10000, { min: 0 }),
@@ -102,6 +105,9 @@ export function loadConfig() {
   }
   if (!["mock", "live"].includes(cfg.runtime.marketDataMode)) {
     throw new Error("MARKET_DATA_MODE must be mock or live");
+  }
+  if (!["rest", "ws"].includes(cfg.risex.orderbookTransport)) {
+    throw new Error("RISEX_ORDERBOOK_TRANSPORT must be rest or ws");
   }
   if (cfg.trading.mode === "live" && cfg.runtime.marketDataMode !== "live") {
     throw new Error("TRADING_MODE=live requires MARKET_DATA_MODE=live");
