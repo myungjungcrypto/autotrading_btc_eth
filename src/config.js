@@ -39,6 +39,7 @@ export function loadConfig() {
       minEdgeBps: entryEdgeBps,
       takerFeeBps: envNumber("TAKER_FEE_BPS", 0),
       slippageBufferBps: envNumber("SLIPPAGE_BUFFER_BPS", 3),
+      maxBookSpreadBps: envNumber("MAX_BOOK_SPREAD_BPS", 100, { min: 0 }),
       minTradeUsd: envNumber("MIN_TRADE_USD", 20, { min: 0 }),
       maxTradeUsd: envNumber("MAX_TRADE_USD", 250, { min: 1 }),
       maxPositionUsdPerSymbol: envNumber("MAX_POSITION_USD_PER_SYMBOL", 1000, { min: 0 }),

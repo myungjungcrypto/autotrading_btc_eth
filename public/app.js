@@ -93,9 +93,9 @@ function marketHtml(symbol, books) {
   return `<div class="market">
     <div class="market-head"><strong>${symbol}</strong><span>${c.market ?? "-"} / ${r.market ?? "-"}</span></div>
     <div class="quote-grid">
-      <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong> / ${fmt(c.bids?.[0]?.size, 6)} <small>age ${ageLabel(c.receivedAt)} / ${fmt(c.latencyMs, 0)}ms</small></span>
+      <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong> / ${fmt(c.bids?.[0]?.size, 6)} <small>age ${ageLabel(c.receivedAt)} / ${fmt(c.latencyMs, 0)}ms / spread ${fmt(c.spreadBps, 1)}bps</small></span>
       <span>Cascade ask <strong>${fmt(c.bestAsk, 4)}</strong> / ${fmt(c.asks?.[0]?.size, 6)}</span>
-      <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong> / ${fmt(r.bids?.[0]?.size, 6)} <small>age ${ageLabel(r.receivedAt)} / ${fmt(r.latencyMs, 0)}ms${r.rateLimited ? " / rate limited" : ""}</small></span>
+      <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong> / ${fmt(r.bids?.[0]?.size, 6)} <small>age ${ageLabel(r.receivedAt)} / ${fmt(r.latencyMs, 0)}ms / spread ${fmt(r.spreadBps, 1)}bps${r.rateLimited ? " / rate limited" : ""}</small></span>
       <span>RISEx ask <strong>${fmt(r.bestAsk, 4)}</strong> / ${fmt(r.asks?.[0]?.size, 6)}</span>
     </div>
   </div>`;

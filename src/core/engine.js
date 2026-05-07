@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { evaluateArbitrage, evaluateExitArbitrage } from "./arbitrage.js";
-import { isBookStale, checkOpportunityRisk } from "./risk.js";
+import { isBookStale, checkBookHealth, checkOpportunityRisk, bookSpreadBps } from "./risk.js";
 import { compactError } from "../lib/logger.js";
 
 export class ArbitrageEngine extends EventEmitter {
@@ -85,6 +85,22 @@ export class ArbitrageEngine extends EventEmitter {
       return;
     }
 
+    const bookHealth = [
+      checkBookHealth(cascadeBook, this.config.maxBookSpreadBps),
+      checkBookHealth(risexBook, this.config.maxBookSpreadBps),
+    ].find((result) => !result.ok);
+    if (bookHealth) {
+      this.store.updateOpportunity(symbol, null);
+      if (this.shouldLogSymbolSkip(symbol, bookHealth.reason)) {
+        this.store.appendEvent("symbol.skipped", {
+          symbol,
+          reason: bookHealth.reason,
+          details: bookHealth.details,
+        });
+      }
+      return;
+    }
+
     const state = this.store.snapshot();
     const openPosition = state.openPositions?.[symbol];
     const opportunity = openPosition
@@ -161,6 +177,7 @@ function stripRawBook(book) {
     bestBid: book.bestBid,
     bestAsk: book.bestAsk,
     latencyMs: book.latencyMs,
+    spreadBps: bookSpreadBps(book),
     rateLimited: book.rateLimited,
     rateLimitBackoffUntil: book.rateLimitBackoffUntil,
     bids: book.bids.slice(0, 10),

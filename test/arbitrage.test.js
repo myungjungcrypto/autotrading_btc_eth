@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { consumeNotional, evaluateArbitrage, evaluateExitArbitrage } from "../src/core/arbitrage.js";
 import { normalizeOrderbook } from "../src/clients/normalize.js";
 import { RisexClient } from "../src/clients/risex.js";
+import { bookSpreadBps, checkBookHealth } from "../src/core/risk.js";
 
 test("consumeNotional calculates VWAP across levels", () => {
   const result = consumeNotional(
@@ -313,6 +314,24 @@ test("RisexClient applies WebSocket orderbook snapshots and deltas", () => {
   assert.equal(updated.bestBid, null);
   assert.equal(updated.bestAsk, 101);
   assert.equal(updated.asks[1].price, 102);
+});
+
+test("checkBookHealth rejects sparse books with excessive internal spread", () => {
+  const risexBook = normalizeOrderbook({
+    exchange: "risex",
+    symbol: "BTC",
+    market: "1",
+    raw: {
+      bids: [[77977.2, 60.5]],
+      asks: [[87500, 70.7]],
+    },
+  });
+
+  assert.ok(bookSpreadBps(risexBook) > 1000);
+  const health = checkBookHealth(risexBook, 100);
+  assert.equal(health.ok, false);
+  assert.equal(health.reason, "wide_book_spread");
+  assert.equal(health.details.exchange, "risex");
 });
 
 function noopLogger() {

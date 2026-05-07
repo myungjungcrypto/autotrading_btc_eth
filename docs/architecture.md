@@ -45,6 +45,7 @@ flowchart LR
 
 - Stale orderbook: the engine skips a symbol when either venue book is older than `STALE_BOOK_MS`.
 - Empty or crossed local book: malformed levels are ignored; impossible opportunities are rejected.
+- Wide venue book spread: if either venue's own best bid/ask spread exceeds `MAX_BOOK_SPREAD_BPS`, the symbol is skipped to avoid treating stale or sparse testnet liquidity as an arbitrage signal.
 - Shallow liquidity: executable size is matched level-by-level with the same base asset size on both venues, and stops before the first marginal level that no longer clears `ENTRY_EDGE_BPS`.
 - Open position lifecycle: while a symbol has an open position, new entries are blocked and the engine only checks whether the spread has compressed to `EXIT_EDGE_BPS`.
 - One-leg failure in live mode: live executor records the failed pair, pauses the engine, and sends an alert so the position can be manually repaired or handled by a future hedge module.

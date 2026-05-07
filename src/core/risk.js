@@ -2,6 +2,41 @@ export function isBookStale(book, staleBookMs, now = Date.now()) {
   return !book?.receivedAt || now - book.receivedAt > staleBookMs;
 }
 
+export function bookSpreadBps(book) {
+  const bid = book?.bestBid;
+  const ask = book?.bestAsk;
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) return Infinity;
+  if (ask <= bid) return Infinity;
+  return ((ask - bid) / ((ask + bid) / 2)) * 10000;
+}
+
+export function checkBookHealth(book, maxBookSpreadBps) {
+  if (!book?.bids?.length || !book?.asks?.length) {
+    return {
+      ok: false,
+      reason: "empty_book",
+      details: { exchange: book?.exchange, market: book?.market },
+    };
+  }
+  if ((maxBookSpreadBps ?? 0) <= 0) return { ok: true };
+  const spreadBps = bookSpreadBps(book);
+  if (!Number.isFinite(spreadBps) || spreadBps > maxBookSpreadBps) {
+    return {
+      ok: false,
+      reason: "wide_book_spread",
+      details: {
+        exchange: book.exchange,
+        market: book.market,
+        bestBid: book.bestBid,
+        bestAsk: book.bestAsk,
+        spreadBps,
+        maxBookSpreadBps,
+      },
+    };
+  }
+  return { ok: true };
+}
+
 export function checkOpportunityRisk({ opportunity, state, config }) {
   if (!opportunity) return { ok: false, reason: "no_opportunity" };
   const openPosition = state.openPositions?.[opportunity.symbol];

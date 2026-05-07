@@ -38,6 +38,7 @@ LOOP_INTERVAL_MS=50
 STALE_BOOK_MS=15000
 ENTRY_EDGE_BPS=50
 EXIT_EDGE_BPS=0
+MAX_BOOK_SPREAD_BPS=100
 ```
 
 If you previously copied an older `.env`, make sure the market ids are updated:
