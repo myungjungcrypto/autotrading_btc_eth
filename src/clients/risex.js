@@ -7,7 +7,11 @@ export class RisexClient {
     this.config = config;
     this.logger = logger;
     this.marketsCache = null;
+    this.orderbookCache = new Map();
+    this.inFlightOrderbooks = new Map();
+    this.backoffUntil = new Map();
     this.lastOrderbookLogAt = new Map();
+    this.lastErrorLogAt = new Map();
   }
 
   url(path) {
@@ -47,18 +51,60 @@ export class RisexClient {
   }
 
   async getOrderbook(symbol, depth) {
+    const cached = this.orderbookCache.get(symbol);
+    const now = Date.now();
+    const backoffUntil = this.backoffUntil.get(symbol) ?? 0;
+    if (cached && now < backoffUntil) {
+      cached.rateLimited = true;
+      cached.rateLimitBackoffUntil = backoffUntil;
+      return cached;
+    }
+    if (cached && now - cached.fetchedAt < (this.config.pollIntervalMs ?? 1000)) {
+      cached.rateLimited = false;
+      return cached;
+    }
+    if (this.inFlightOrderbooks.has(symbol)) return this.inFlightOrderbooks.get(symbol);
+
+    const request = this.fetchOrderbook(symbol, depth, cached);
+    this.inFlightOrderbooks.set(symbol, request);
+    try {
+      return await request;
+    } finally {
+      this.inFlightOrderbooks.delete(symbol);
+    }
+  }
+
+  async fetchOrderbook(symbol, depth, cached) {
     const startedAt = Date.now();
     const market = await this.resolveMarket(symbol);
-    const raw = await requestJson(
-      withQuery(this.url("/orderbook"), {
-        market_id: market.market_id,
-        limit: depth,
-      }),
-      {
-        timeoutMs: this.config.timeoutMs ?? 2500,
-        retries: this.config.retries ?? 0,
-      },
-    );
+    let raw;
+    try {
+      raw = await requestJson(
+        withQuery(this.url("/orderbook"), {
+          market_id: market.market_id,
+          limit: depth,
+        }),
+        {
+          timeoutMs: this.config.timeoutMs ?? 2500,
+          retries: this.config.retries ?? 0,
+        },
+      );
+    } catch (error) {
+      if (error.status === 429) {
+        const backoffUntil = Date.now() + (this.config.rateLimitBackoffMs ?? 10000);
+        this.backoffUntil.set(symbol, backoffUntil);
+        this.logOrderbookError(symbol, error, "RISEx rate limited; using cached orderbook when available");
+        if (cached) {
+          cached.rateLimited = true;
+          cached.rateLimitBackoffUntil = backoffUntil;
+          return cached;
+        }
+      }
+      this.logOrderbookError(symbol, error, "RISEx orderbook request failed");
+      if (cached) return cached;
+      throw error;
+    }
+
     const book = normalizeOrderbook({
       exchange: "risex",
       symbol,
@@ -66,6 +112,11 @@ export class RisexClient {
       raw: raw.data ?? raw,
     });
     book.latencyMs = Date.now() - startedAt;
+    book.fetchedAt = Date.now();
+    book.rateLimited = false;
+    book.rateLimitBackoffUntil = null;
+    this.backoffUntil.delete(symbol);
+    this.orderbookCache.set(symbol, book);
     this.logOrderbook(symbol, book);
     return book;
   }
@@ -83,6 +134,22 @@ export class RisexClient {
       bestBid: book.bestBid,
       bestAsk: book.bestAsk,
       latencyMs: book.latencyMs,
+    });
+  }
+
+  logOrderbookError(symbol, error, message) {
+    const interval = this.config.errorLogIntervalMs ?? 10000;
+    if (interval <= 0) return;
+    const key = `${symbol}:${error.status ?? error.name ?? "error"}`;
+    const now = Date.now();
+    const last = this.lastErrorLogAt.get(key) ?? 0;
+    if (now - last < interval) return;
+    this.lastErrorLogAt.set(key, now);
+    this.logger.warn(message, {
+      symbol,
+      status: error.status,
+      message: error.message,
+      backoffMs: this.config.rateLimitBackoffMs ?? 10000,
     });
   }
 

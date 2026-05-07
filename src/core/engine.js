@@ -14,6 +14,8 @@ export class ArbitrageEngine extends EventEmitter {
     this.timer = null;
     this.running = false;
     this.inTick = false;
+    this.lastSymbolErrorLogAt = new Map();
+    this.lastSymbolSkipLogAt = new Map();
   }
 
   start() {
@@ -43,9 +45,11 @@ export class ArbitrageEngine extends EventEmitter {
         const symbol = this.config.symbols[i];
         const details = compactError(results[i].reason);
         this.store.state.lastError = details;
-        this.store.appendEvent("symbol.error", { symbol, ...details });
-        this.emitEvent("symbol.error", { symbol, ...details });
-        this.logger.error(`symbol ${symbol} failed`, results[i].reason);
+        if (this.shouldLogSymbolError(symbol, details)) {
+          this.store.appendEvent("symbol.error", { symbol, ...details });
+          this.emitEvent("symbol.error", { symbol, ...details });
+          this.logger.error(`symbol ${symbol} failed`, results[i].reason);
+        }
       }
       this.emitEvent("tick.completed", {});
     } catch (error) {
@@ -75,7 +79,9 @@ export class ArbitrageEngine extends EventEmitter {
       isBookStale(risexBook, this.config.staleBookMs, now)
     ) {
       this.store.updateOpportunity(symbol, null);
-      this.store.appendEvent("symbol.skipped", { symbol, reason: "stale_book" });
+      if (this.shouldLogSymbolSkip(symbol, "stale_book")) {
+        this.store.appendEvent("symbol.skipped", { symbol, reason: "stale_book" });
+      }
       return;
     }
 
@@ -122,6 +128,28 @@ export class ArbitrageEngine extends EventEmitter {
   emitEvent(type, payload) {
     this.emit("event", { type, payload });
   }
+
+  shouldLogSymbolError(symbol, details) {
+    const interval = this.config.symbolErrorLogIntervalMs ?? 10000;
+    if (interval <= 0) return false;
+    const key = `${symbol}:${details.name ?? "error"}:${details.message ?? ""}`;
+    const now = Date.now();
+    const last = this.lastSymbolErrorLogAt.get(key) ?? 0;
+    if (now - last < interval) return false;
+    this.lastSymbolErrorLogAt.set(key, now);
+    return true;
+  }
+
+  shouldLogSymbolSkip(symbol, reason) {
+    const interval = this.config.symbolErrorLogIntervalMs ?? 10000;
+    if (interval <= 0) return false;
+    const key = `${symbol}:${reason}`;
+    const now = Date.now();
+    const last = this.lastSymbolSkipLogAt.get(key) ?? 0;
+    if (now - last < interval) return false;
+    this.lastSymbolSkipLogAt.set(key, now);
+    return true;
+  }
 }
 
 function stripRawBook(book) {
@@ -133,6 +161,8 @@ function stripRawBook(book) {
     bestBid: book.bestBid,
     bestAsk: book.bestAsk,
     latencyMs: book.latencyMs,
+    rateLimited: book.rateLimited,
+    rateLimitBackoffUntil: book.rateLimitBackoffUntil,
     bids: book.bids.slice(0, 10),
     asks: book.asks.slice(0, 10),
   };

@@ -43,6 +43,7 @@ export function loadConfig() {
       maxTradeUsd: envNumber("MAX_TRADE_USD", 250, { min: 1 }),
       maxPositionUsdPerSymbol: envNumber("MAX_POSITION_USD_PER_SYMBOL", 1000, { min: 0 }),
       maxDailyLossUsd: envNumber("MAX_DAILY_LOSS_USD", 100, { min: 0 }),
+      symbolErrorLogIntervalMs: envNumber("SYMBOL_ERROR_LOG_INTERVAL_MS", 10000, { min: 0 }),
     },
     telegram: {
       botToken: envString("TELEGRAM_BOT_TOKEN"),
@@ -76,7 +77,10 @@ export function loadConfig() {
       apiPrefix: envString("RISEX_API_PREFIX", "/v1"),
       timeoutMs: envNumber("RISEX_TIMEOUT_MS", 2500, { min: 100 }),
       retries: envNumber("RISEX_RETRIES", 0, { min: 0 }),
+      pollIntervalMs: envNumber("RISEX_POLL_INTERVAL_MS", 1000, { min: 50 }),
+      rateLimitBackoffMs: envNumber("RISEX_RATE_LIMIT_BACKOFF_MS", 10000, { min: 1000 }),
       logIntervalMs: envNumber("RISEX_LOG_INTERVAL_MS", 10000, { min: 0 }),
+      errorLogIntervalMs: envNumber("RISEX_ERROR_LOG_INTERVAL_MS", 10000, { min: 0 }),
       account: envString("RISEX_ACCOUNT"),
       signer: envString("RISEX_SIGNER"),
       enableTestnetServerSigning: envBool("RISEX_ENABLE_TESTNET_SERVER_SIGNING", false),
