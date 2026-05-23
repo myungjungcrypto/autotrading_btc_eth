@@ -18,10 +18,8 @@ npm --version
 ## 2. Clone the repository
 
 ```bash
-sudo mkdir -p /opt/cascade-risex-arbi
-sudo chown ec2-user:ec2-user /opt/cascade-risex-arbi
-git clone https://github.com/myungjungcrypto/autotrading_btc_eth.git /opt/cascade-risex-arbi/app
-cd /opt/cascade-risex-arbi/app
+git clone https://github.com/myungjungcrypto/autotrading_btc_eth.git ~/cascade-risex-arbi
+cd ~/cascade-risex-arbi
 npm install
 cp .env.example .env
 ```
@@ -122,8 +120,8 @@ journalctl -u cascade-risex-arbi -f
 Restart after pulling updates:
 
 ```bash
-cd /opt/cascade-risex-arbi/app
-git pull
+cd ~/cascade-risex-arbi
+git pull --ff-only
 npm install
 npm run check
 npm test
@@ -136,5 +134,5 @@ sudo systemctl restart cascade-risex-arbi
 - Start in `paper` mode and verify orderbook freshness.
 - Confirm Telegram completion and failure alerts.
 - Confirm daily report time in the server timezone.
-- Keep `MAX_POSITION_NOTIONAL_USD` and `MAX_DAILY_LOSS_USD` small until live fills are verified.
+- Keep `MAX_POSITION_USD_PER_SYMBOL` and `MAX_DAILY_LOSS_USD` small until live fills are verified.
 - Watch for `leg_failed` events; the engine pauses automatically after a partial execution failure.

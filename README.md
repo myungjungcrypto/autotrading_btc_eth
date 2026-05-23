@@ -35,4 +35,5 @@ See [docs/architecture.md](docs/architecture.md) for architecture, data flow, ed
 Amazon Linux 2023 deployment notes and a `systemd` service template are included in:
 
 - [docs/deploy-amazon-linux-2023.md](docs/deploy-amazon-linux-2023.md)
+- [docs/runbook.md](docs/runbook.md)
 - [ops/systemd/cascade-risex-arbi.service](ops/systemd/cascade-risex-arbi.service)

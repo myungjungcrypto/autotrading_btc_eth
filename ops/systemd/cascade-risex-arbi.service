@@ -6,10 +6,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ec2-user
-WorkingDirectory=/opt/cascade-risex-arbi/app
+WorkingDirectory=/home/ec2-user/cascade-risex-arbi
 Environment=NODE_ENV=production
-EnvironmentFile=/opt/cascade-risex-arbi/app/.env
-ExecStart=/usr/bin/npm start
+EnvironmentFile=/home/ec2-user/cascade-risex-arbi/.env
+ExecStart=/usr/bin/node src/main.js
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
