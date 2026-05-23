@@ -9,8 +9,14 @@ Sources:
 
 ## Base URLs
 
+- REST production, matching `https://www.rise.trade`: `https://api.rise.trade/api/v1`
+- WebSocket production, matching `https://www.rise.trade`: `wss://api.rise.trade/ws/`
 - REST testnet: `https://api.testnet.rise.trade/v1`
 - WebSocket testnet variable in docs: `wss://ws.testnet.rise.trade/ws`
+
+The bot defaults to the production URLs because it compares against the public
+trading UI at `https://www.rise.trade/en/trade/ETH-PERP`. Use the testnet URLs
+explicitly in `.env` only when testing against RISEx testnet liquidity.
 
 ## WebSocket Orderbook Channel
 
@@ -52,7 +58,7 @@ Official notes:
 
 ## Orderbook Shape
 
-Current testnet market ids used by this bot:
+Current production market ids used by this bot:
 
 - BTC/USDC: `1`
 - ETH/USDC: `2`

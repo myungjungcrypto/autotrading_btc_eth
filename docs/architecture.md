@@ -45,7 +45,7 @@ flowchart LR
 
 - Stale orderbook: the engine skips a symbol when either venue book is older than `STALE_BOOK_MS`.
 - Empty or crossed local book: malformed levels are ignored; impossible opportunities are rejected.
-- Wide venue book spread: if either venue's own best bid/ask spread exceeds `MAX_BOOK_SPREAD_BPS`, the symbol is skipped to avoid treating stale or sparse testnet liquidity as an arbitrage signal.
+- Wide venue book spread: if either venue's own best bid/ask spread exceeds `MAX_BOOK_SPREAD_BPS`, the symbol is skipped to avoid treating stale or sparse liquidity as an arbitrage signal.
 - Shallow liquidity: executable size is matched level-by-level with the same base asset size on both venues, and stops before the first marginal level that no longer clears `ENTRY_EDGE_BPS`.
 - Open position lifecycle: while a symbol has an open position, new entries are blocked and the engine only checks whether the spread has compressed to `EXIT_EDGE_BPS`.
 - One-leg failure in live mode: live executor records the failed pair, pauses the engine, and sends an alert so the position can be manually repaired or handled by a future hedge module.
@@ -65,4 +65,4 @@ flowchart LR
 
 ## Performance Evaluation
 
-The hot path is O(symbols * depth) because each entry or exit direction walks normalized orderbook levels once. BTC and ETH are evaluated in parallel. With depth 20 and a 50ms target loop, the CPU cost is still small on a small EC2 instance. Network latency dominates initial snapshots, but steady-state decisions read local WebSocket caches for both venues. RISEx documentation currently throttles orderbook stream updates to a maximum of 4 updates per second per market, so the 50ms engine loop can react as soon as the newest streamed book is present but cannot make RISEx publish faster than its 250ms bucket.
+The hot path is O(symbols * depth) because each entry or exit direction walks normalized orderbook levels once. BTC and ETH are evaluated in parallel. With depth 20 and a 50ms target loop, the CPU cost is still small on a small EC2 instance. Network latency dominates initial snapshots, but steady-state decisions read local WebSocket caches for both venues. RISEx production WebSocket updates arrive continuously as orderbook changes are published, so the 50ms engine loop can react as soon as the newest streamed book is present.
