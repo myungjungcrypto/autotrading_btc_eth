@@ -1,6 +1,13 @@
 import { EventEmitter } from "node:events";
 import { evaluateArbitrage, evaluateExitArbitrage } from "./arbitrage.js";
-import { isBookStale, checkBookHealth, checkOpportunityRisk, bookSpreadBps } from "./risk.js";
+import {
+  isBookStale,
+  checkBookHealth,
+  checkBookMove,
+  checkCrossVenueMid,
+  checkOpportunityRisk,
+  bookSpreadBps,
+} from "./risk.js";
 import { compactError } from "../lib/logger.js";
 
 export class ArbitrageEngine extends EventEmitter {
@@ -16,6 +23,7 @@ export class ArbitrageEngine extends EventEmitter {
     this.inTick = false;
     this.lastSymbolErrorLogAt = new Map();
     this.lastSymbolSkipLogAt = new Map();
+    this.lastHealthyBooks = new Map();
   }
 
   start() {
@@ -63,15 +71,17 @@ export class ArbitrageEngine extends EventEmitter {
   }
 
   async evaluateSymbol(symbol) {
+    const previousHealthyBooks = this.lastHealthyBooks.get(symbol) ?? {};
     const [cascadeBook, risexBook] = await Promise.all([
       this.clients.cascade.getOrderbook(symbol, this.config.orderbookDepth),
       this.clients.risex.getOrderbook(symbol, this.config.orderbookDepth),
     ]);
 
-    this.store.updateBooks(symbol, {
+    const displayBooks = {
       cascade: stripRawBook(cascadeBook),
       risex: stripRawBook(risexBook),
-    });
+    };
+    this.store.updateBooks(symbol, displayBooks);
 
     const now = Date.now();
     if (
@@ -100,6 +110,33 @@ export class ArbitrageEngine extends EventEmitter {
       }
       return;
     }
+
+    const dataQuality = [
+      checkBookMove(cascadeBook, previousHealthyBooks.cascade, {
+        maxBookMidMoveBps: this.config.maxBookMidMoveBps,
+        staleBookMs: this.config.staleBookMs,
+        now,
+      }),
+      checkBookMove(risexBook, previousHealthyBooks.risex, {
+        maxBookMidMoveBps: this.config.maxBookMidMoveBps,
+        staleBookMs: this.config.staleBookMs,
+        now,
+      }),
+      checkCrossVenueMid(cascadeBook, risexBook, this.config.maxCrossVenueMidDiffBps),
+    ].find((result) => !result.ok);
+    if (dataQuality) {
+      this.store.updateOpportunity(symbol, null);
+      if (this.shouldLogSymbolSkip(symbol, dataQuality.reason)) {
+        this.store.appendEvent("symbol.skipped", {
+          symbol,
+          reason: dataQuality.reason,
+          details: dataQuality.details,
+        });
+      }
+      return;
+    }
+
+    this.lastHealthyBooks.set(symbol, displayBooks);
 
     const state = this.store.snapshot();
     const openPosition = state.openPositions?.[symbol];

@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { consumeNotional, evaluateArbitrage, evaluateExitArbitrage } from "../src/core/arbitrage.js";
 import { normalizeOrderbook } from "../src/clients/normalize.js";
+import { CascadeClient } from "../src/clients/cascade.js";
 import { RisexClient } from "../src/clients/risex.js";
-import { bookSpreadBps, checkBookHealth } from "../src/core/risk.js";
+import { bookSpreadBps, checkBookHealth, checkBookMove, checkCrossVenueMid } from "../src/core/risk.js";
 
 test("consumeNotional calculates VWAP across levels", () => {
   const result = consumeNotional(
@@ -316,6 +317,26 @@ test("RisexClient applies WebSocket orderbook snapshots and deltas", () => {
   assert.equal(updated.asks[1].price, 102);
 });
 
+test("CascadeClient preserves the real last update time for stale detection", () => {
+  const client = new CascadeClient(
+    {
+      baseUrl: "https://engine.cascade.xyz",
+      markets: { BTC: "BTC-USD-PERP" },
+      wsPath: "/ws",
+      orderbookTickSize: 0.1,
+    },
+    noopLogger(),
+  );
+  client.books.set("BTC-USD-PERP", {
+    bids: new Map([[100, { price: 100, quantity: 1 }]]),
+    asks: new Map([[101, { price: 101, quantity: 1 }]]),
+    receivedAt: 12345,
+  });
+
+  const book = client.bookFromCache("BTC", "BTC-USD-PERP", 10);
+  assert.equal(book.receivedAt, 12345);
+});
+
 test("checkBookHealth rejects sparse books with excessive internal spread", () => {
   const risexBook = normalizeOrderbook({
     exchange: "risex",
@@ -332,6 +353,94 @@ test("checkBookHealth rejects sparse books with excessive internal spread", () =
   assert.equal(health.ok, false);
   assert.equal(health.reason, "wide_book_spread");
   assert.equal(health.details.exchange, "risex");
+});
+
+test("checkBookMove rejects sudden mid price jumps from the last healthy book", () => {
+  const previousBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    receivedAt: 10_000,
+    raw: {
+      bids: [[100, 1]],
+      asks: [[101, 1]],
+    },
+  });
+  const currentBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    receivedAt: 11_000,
+    raw: {
+      bids: [[110, 1]],
+      asks: [[111, 1]],
+    },
+  });
+
+  const result = checkBookMove(currentBook, previousBook, {
+    maxBookMidMoveBps: 500,
+    staleBookMs: 15_000,
+    now: 11_000,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "book_mid_jump");
+});
+
+test("checkBookMove ignores stale previous books when comparing jumps", () => {
+  const previousBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    receivedAt: 1_000,
+    raw: {
+      bids: [[100, 1]],
+      asks: [[101, 1]],
+    },
+  });
+  const currentBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    receivedAt: 30_000,
+    raw: {
+      bids: [[110, 1]],
+      asks: [[111, 1]],
+    },
+  });
+
+  const result = checkBookMove(currentBook, previousBook, {
+    maxBookMidMoveBps: 500,
+    staleBookMs: 15_000,
+    now: 30_000,
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test("checkCrossVenueMid rejects large Cascade and RISEx mid divergence", () => {
+  const cascadeBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "ETH",
+    market: "ETH-USD-PERP",
+    raw: {
+      bids: [[2000, 10]],
+      asks: [[2001, 10]],
+    },
+  });
+  const risexBook = normalizeOrderbook({
+    exchange: "risex",
+    symbol: "ETH",
+    market: "2",
+    raw: {
+      bids: [[2100, 10]],
+      asks: [[2101, 10]],
+    },
+  });
+
+  const result = checkCrossVenueMid(cascadeBook, risexBook, 300);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "cross_venue_mid_divergence");
 });
 
 function noopLogger() {

@@ -59,6 +59,15 @@ Cascade WS connected
 RISEx WS connected ... wss://api.rise.trade/ws/
 ```
 
+The default data-quality guards are:
+
+```bash
+MAX_BOOK_SPREAD_BPS=100
+MAX_BOOK_MID_MOVE_BPS=500
+MAX_CROSS_VENUE_MID_DIFF_BPS=300
+STALE_BOOK_MS=15000
+```
+
 ### Stop Bot On EC2
 
 ```bash

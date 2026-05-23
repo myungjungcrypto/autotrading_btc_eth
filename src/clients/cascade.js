@@ -195,7 +195,7 @@ export class CascadeClient {
         bids: mapToLevels(book.bids, "bid").slice(0, depth),
         asks: mapToLevels(book.asks, "ask").slice(0, depth),
       },
-      receivedAt: this.ws?.readyState === WebSocket.OPEN ? Date.now() : book.receivedAt,
+      receivedAt: book.receivedAt,
     });
   }
 

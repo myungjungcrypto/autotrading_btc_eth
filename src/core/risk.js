@@ -10,6 +10,15 @@ export function bookSpreadBps(book) {
   return ((ask - bid) / ((ask + bid) / 2)) * 10000;
 }
 
+export function bookMid(book) {
+  const bid = book?.bestBid;
+  const ask = book?.bestAsk;
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask <= bid) {
+    return null;
+  }
+  return (bid + ask) / 2;
+}
+
 export function checkBookHealth(book, maxBookSpreadBps) {
   if (!book?.bids?.length || !book?.asks?.length) {
     return {
@@ -35,6 +44,57 @@ export function checkBookHealth(book, maxBookSpreadBps) {
     };
   }
   return { ok: true };
+}
+
+export function checkBookMove(book, previousBook, { maxBookMidMoveBps, staleBookMs, now = Date.now() } = {}) {
+  if ((maxBookMidMoveBps ?? 0) <= 0 || !previousBook || isBookStale(previousBook, staleBookMs, now)) {
+    return { ok: true };
+  }
+
+  const currentMid = bookMid(book);
+  const previousMid = bookMid(previousBook);
+  if (!Number.isFinite(currentMid) || !Number.isFinite(previousMid)) return { ok: true };
+
+  const moveBps = (Math.abs(currentMid - previousMid) / previousMid) * 10000;
+  if (moveBps <= maxBookMidMoveBps) return { ok: true };
+
+  return {
+    ok: false,
+    reason: "book_mid_jump",
+    details: {
+      exchange: book.exchange,
+      market: book.market,
+      previousMid,
+      currentMid,
+      moveBps,
+      maxBookMidMoveBps,
+    },
+  };
+}
+
+export function checkCrossVenueMid(cascadeBook, risexBook, maxCrossVenueMidDiffBps) {
+  if ((maxCrossVenueMidDiffBps ?? 0) <= 0) return { ok: true };
+
+  const cascadeMid = bookMid(cascadeBook);
+  const risexMid = bookMid(risexBook);
+  if (!Number.isFinite(cascadeMid) || !Number.isFinite(risexMid)) return { ok: true };
+
+  const averageMid = (cascadeMid + risexMid) / 2;
+  const diffBps = (Math.abs(cascadeMid - risexMid) / averageMid) * 10000;
+  if (diffBps <= maxCrossVenueMidDiffBps) return { ok: true };
+
+  return {
+    ok: false,
+    reason: "cross_venue_mid_divergence",
+    details: {
+      cascadeMarket: cascadeBook.market,
+      risexMarket: risexBook.market,
+      cascadeMid,
+      risexMid,
+      diffBps,
+      maxCrossVenueMidDiffBps,
+    },
+  };
 }
 
 export function checkOpportunityRisk({ opportunity, state, config }) {
