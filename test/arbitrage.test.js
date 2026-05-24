@@ -564,6 +564,48 @@ test("LighterClient does not treat pre-snapshot updates as a full book", () => {
   assert.equal(client.bookFromCache("BTC", "1", 10), null);
 });
 
+test("LighterClient backs off reconnects without dropping cached books", async () => {
+  const client = new LighterClient(
+    {
+      baseUrl: "https://mainnet.zklighter.elliot.ai",
+      apiPrefix: "/api/v1",
+      markets: { BTC: "1" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://mainnet.zklighter.elliot.ai/stream",
+      wsReconnectBackoffMs: 10000,
+    },
+    noopLogger(),
+  );
+  client.nextConnectAt = Date.now() + 10000;
+  client.books.set("1", {
+    bids: new Map([[100, { price: 100, size: 1 }]]),
+    asks: new Map([[101, { price: 101, size: 1 }]]),
+    receivedAt: 12345,
+    nonce: 30,
+  });
+
+  const cached = await client.getOrderbook("BTC", 10);
+  assert.equal(cached.bestBid, 100);
+  assert.equal(cached.nonce, 30);
+});
+
+test("LighterClient reports reconnect backoff when no cached book exists", async () => {
+  const client = new LighterClient(
+    {
+      baseUrl: "https://mainnet.zklighter.elliot.ai",
+      apiPrefix: "/api/v1",
+      markets: { BTC: "1" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://mainnet.zklighter.elliot.ai/stream",
+      wsReconnectBackoffMs: 10000,
+    },
+    noopLogger(),
+  );
+  client.nextConnectAt = Date.now() + 10000;
+
+  await assert.rejects(() => client.getOrderbook("BTC", 10), /reconnect backoff/);
+});
+
 test("checkBookHealth rejects sparse books with excessive internal spread", () => {
   const risexBook = normalizeOrderbook({
     exchange: "risex",

@@ -15,6 +15,8 @@ export class LighterClient {
     this.subscribedMarketIds = new Set(Object.values(config.markets ?? {}).filter(Boolean).map(String));
     this.wsSubscribedMarketIds = new Set();
     this.lastOrderbookLogAt = new Map();
+    this.nextConnectAt = 0;
+    this.closed = false;
   }
 
   url(path) {
@@ -50,13 +52,17 @@ export class LighterClient {
     const startedAt = Date.now();
     const marketId = this.resolveMarket(symbol);
     this.subscribeMarket(marketId);
-    this.ensureWs();
+    const wsAvailable = this.ensureWs();
 
     const cached = this.bookFromCache(symbol, marketId, depth);
     if (cached) {
       cached.readLatencyMs = Date.now() - startedAt;
       this.logOrderbook(symbol, cached);
       return cached;
+    }
+
+    if (!wsAvailable) {
+      throw new Error(`Lighter WS reconnect backoff for ${marketId}`);
     }
 
     const book = await this.waitForBook(symbol, marketId, depth);
@@ -66,13 +72,17 @@ export class LighterClient {
   }
 
   ensureWs() {
-    if (this.ws && [WebSocket.OPEN, WebSocket.CONNECTING].includes(this.ws.readyState)) return;
+    if (this.ws && [WebSocket.OPEN, WebSocket.CONNECTING].includes(this.ws.readyState)) return true;
+    if (Date.now() < this.nextConnectAt) return false;
+
+    this.closed = false;
     this.connecting = true;
     this.ws = new WebSocket(this.config.wsUrl);
     this.wsSubscribedMarketIds.clear();
 
     this.ws.on("open", () => {
       this.connecting = false;
+      this.nextConnectAt = 0;
       for (const marketId of this.subscribedMarketIds) this.sendOrderbookSubscribe(marketId);
       this.logger.info("Lighter WS connected", {
         url: this.config.wsUrl,
@@ -88,10 +98,12 @@ export class LighterClient {
       }
     });
 
-    this.ws.on("close", () => {
+    this.ws.on("close", (code, reasonBuffer) => {
+      const reason = reasonBuffer?.toString?.() || `close ${code}`;
       this.connecting = false;
       this.ws = null;
       this.rejectAllWaiters(new Error("Lighter WS closed before orderbook snapshot"));
+      if (!this.closed) this.scheduleReconnect(reason);
       this.logger.warn("Lighter WS closed");
     });
 
@@ -99,8 +111,10 @@ export class LighterClient {
       this.connecting = false;
       this.ws = null;
       this.rejectAllWaiters(error);
+      this.scheduleReconnect(error.message);
       this.logger.warn("Lighter WS error", { message: error.message });
     });
+    return true;
   }
 
   subscribeMarket(marketId) {
@@ -279,6 +293,7 @@ export class LighterClient {
     this.ws = null;
     this.connecting = false;
     this.wsSubscribedMarketIds.clear();
+    this.scheduleReconnect(reason);
     if (!ws) return;
     this.logger.warn("Lighter WS reconnecting", { reason });
     try {
@@ -290,6 +305,7 @@ export class LighterClient {
 
   close() {
     this.rejectAllWaiters(new Error("Lighter client closed"));
+    this.closed = true;
     const ws = this.ws;
     this.ws = null;
     this.connecting = false;
@@ -321,6 +337,12 @@ export class LighterClient {
       latencyMs: book.latencyMs,
       nonce: book.nonce,
     });
+  }
+
+  scheduleReconnect(reason) {
+    const backoffMs = this.config.wsReconnectBackoffMs ?? 10000;
+    this.nextConnectAt = Math.max(this.nextConnectAt, Date.now() + backoffMs);
+    this.logger.warn("Lighter WS reconnect backoff", { reason, backoffMs });
   }
 }
 

@@ -111,8 +111,9 @@ export function loadConfig() {
       timeoutMs: envNumber("LIGHTER_TIMEOUT_MS", 2500, { min: 100 }),
       retries: envNumber("LIGHTER_RETRIES", 0, { min: 0 }),
       orderbookTransport: envString("LIGHTER_ORDERBOOK_TRANSPORT", "ws"),
-      wsUrl: envString("LIGHTER_WS_URL", "wss://mainnet.zklighter.elliot.ai/stream"),
+      wsUrl: normalizeLighterWsUrl(envString("LIGHTER_WS_URL", "wss://mainnet.zklighter.elliot.ai/stream")),
       wsResubscribeMs: envNumber("LIGHTER_WS_RESUBSCRIBE_MS", 5000, { min: 500 }),
+      wsReconnectBackoffMs: envNumber("LIGHTER_WS_RECONNECT_BACKOFF_MS", 10000, { min: 1000 }),
       logIntervalMs: envNumber("LIGHTER_LOG_INTERVAL_MS", 10000, { min: 0 }),
       markets: Object.fromEntries(
         symbols.map((symbol) => [
@@ -173,4 +174,19 @@ function parseRoutePairs(raw) {
       }
       return [left, right];
     });
+}
+
+function normalizeLighterWsUrl(raw) {
+  let url = String(raw ?? "").trim();
+  if (!url) return url;
+  url = url.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes("zklighter") && (!parsed.pathname || parsed.pathname === "/")) {
+      parsed.pathname = "/stream";
+    }
+    return parsed.toString().replace(/\/$/, parsed.pathname === "/" ? "/" : "");
+  } catch {
+    return url;
+  }
 }

@@ -69,6 +69,8 @@ MAX_CROSS_VENUE_MID_DIFF_BPS=300
 STALE_BOOK_MS=15000
 EXCHANGES=cascade,risex,lighter
 ROUTE_PAIRS=lighter:cascade,lighter:risex
+LIGHTER_WS_URL=wss://mainnet.zklighter.elliot.ai/stream
+LIGHTER_WS_RECONNECT_BACKOFF_MS=10000
 ```
 
 ### Stop Bot On EC2
