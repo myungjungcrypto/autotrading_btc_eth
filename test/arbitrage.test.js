@@ -417,7 +417,6 @@ test("LighterClient applies WebSocket orderbook snapshots and deltas", () => {
       offset: 1000,
     },
     timestamp: Date.now(),
-    type: "update/order_book",
   });
 
   const snapshot = client.bookFromCache("BTC", "1", 10);
@@ -480,6 +479,89 @@ test("LighterClient drops local book on nonce gap", () => {
   });
 
   assert.equal(client.bookFromCache("ETH", "0", 10), null);
+});
+
+test("LighterClient ignores out-of-order updates older than the local nonce", () => {
+  const client = new LighterClient(
+    {
+      baseUrl: "https://mainnet.zklighter.elliot.ai",
+      apiPrefix: "/api/v1",
+      markets: { BTC: "1" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://mainnet.zklighter.elliot.ai/stream",
+    },
+    noopLogger(),
+  );
+
+  client.handleWsMessage({
+    channel: "order_book:1",
+    order_book: {
+      bids: [{ price: "100", size: "1" }],
+      asks: [{ price: "101", size: "1" }],
+      nonce: 30,
+      begin_nonce: 0,
+    },
+  });
+  client.handleWsMessage({
+    channel: "order_book:1",
+    order_book: {
+      bids: [{ price: "99", size: "1" }],
+      asks: [],
+      nonce: 29,
+      begin_nonce: 28,
+    },
+    type: "update/order_book",
+  });
+
+  const book = client.bookFromCache("BTC", "1", 10);
+  assert.equal(book.bestBid, 100);
+  assert.equal(book.nonce, 30);
+});
+
+test("LighterClient ignores duplicate subscription errors", () => {
+  const client = new LighterClient(
+    {
+      baseUrl: "https://mainnet.zklighter.elliot.ai",
+      apiPrefix: "/api/v1",
+      markets: { BTC: "1" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://mainnet.zklighter.elliot.ai/stream",
+    },
+    noopLogger(),
+  );
+
+  assert.doesNotThrow(() => {
+    client.handleWsMessage({
+      type: "error",
+      error: { message: "Already Subscribed to : order_book:1" },
+    });
+  });
+});
+
+test("LighterClient does not treat pre-snapshot updates as a full book", () => {
+  const client = new LighterClient(
+    {
+      baseUrl: "https://mainnet.zklighter.elliot.ai",
+      apiPrefix: "/api/v1",
+      markets: { BTC: "1" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://mainnet.zklighter.elliot.ai/stream",
+    },
+    noopLogger(),
+  );
+
+  client.handleWsMessage({
+    channel: "order_book:1",
+    order_book: {
+      bids: [{ price: "77010.0", size: "0.1" }],
+      asks: [],
+      nonce: 22,
+      begin_nonce: 21,
+    },
+    type: "update/order_book",
+  });
+
+  assert.equal(client.bookFromCache("BTC", "1", 10), null);
 });
 
 test("checkBookHealth rejects sparse books with excessive internal spread", () => {

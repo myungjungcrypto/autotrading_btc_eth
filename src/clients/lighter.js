@@ -13,6 +13,7 @@ export class LighterClient {
     this.waiters = new Map();
     this.marketsCache = null;
     this.subscribedMarketIds = new Set(Object.values(config.markets ?? {}).filter(Boolean).map(String));
+    this.wsSubscribedMarketIds = new Set();
     this.lastOrderbookLogAt = new Map();
   }
 
@@ -68,6 +69,7 @@ export class LighterClient {
     if (this.ws && [WebSocket.OPEN, WebSocket.CONNECTING].includes(this.ws.readyState)) return;
     this.connecting = true;
     this.ws = new WebSocket(this.config.wsUrl);
+    this.wsSubscribedMarketIds.clear();
 
     this.ws.on("open", () => {
       this.connecting = false;
@@ -112,17 +114,27 @@ export class LighterClient {
 
   sendOrderbookSubscribe(marketId) {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
+    const key = String(marketId);
+    if (this.wsSubscribedMarketIds.has(key)) return;
     this.ws.send(
       JSON.stringify({
         type: "subscribe",
-        channel: `order_book/${marketId}`,
+        channel: `order_book/${key}`,
       }),
     );
+    this.wsSubscribedMarketIds.add(key);
   }
 
   handleWsMessage(payload) {
     if (payload.error || payload.type === "error") {
       const message = payload.error?.message ?? payload.message ?? "unknown";
+      const normalized = String(message).toLowerCase();
+      if (normalized.includes("already subscribed")) return;
+      if (normalized.includes("too many websocket messages")) {
+        this.logger.warn("Lighter WS rate limited; reconnecting", { message });
+        this.resetWs(message);
+        return;
+      }
       const error = new Error(`Lighter WS error: ${message}`);
       this.rejectAllWaiters(error);
       throw error;
@@ -140,6 +152,7 @@ export class LighterClient {
     const latencyMs = timestampLatencyMs(payload.timestamp ?? data.last_updated_at, receivedAt);
     const nonce = decimalToNumber(data.nonce);
     const beginNonce = decimalToNumber(data.begin_nonce);
+    const type = String(payload.type ?? "").toLowerCase();
 
     if (existing) {
       if (
@@ -147,13 +160,14 @@ export class LighterClient {
         Number.isFinite(existing.nonce) &&
         beginNonce !== existing.nonce
       ) {
+        if (beginNonce < existing.nonce) return;
         this.logger.warn("Lighter orderbook nonce gap; resubscribing", {
           market: marketId,
           beginNonce,
           lastNonce: existing.nonce,
         });
         this.books.delete(marketId);
-        this.sendOrderbookSubscribe(marketId);
+        this.resetWs(`Lighter nonce gap for ${marketId}`);
         return;
       }
       applyLevelDeltas(existing.bids, data.bids);
@@ -165,6 +179,11 @@ export class LighterClient {
       existing.offset = decimalToNumber(data.offset ?? payload.offset) || existing.offset;
       existing.lastUpdatedAt = data.last_updated_at ?? payload.last_updated_at ?? existing.lastUpdatedAt;
     } else {
+      if (type.includes("update")) {
+        this.logger.warn("Lighter orderbook update arrived before snapshot; reconnecting", { market: marketId });
+        this.resetWs(`Lighter update before snapshot for ${marketId}`);
+        return;
+      }
       this.books.set(marketId, {
         bids: levelsToMap(data.bids),
         asks: levelsToMap(data.asks),
@@ -199,8 +218,8 @@ export class LighterClient {
 
       resubscribe = setTimeout(() => {
         if (settled) return;
-        this.logger.warn("Lighter orderbook snapshot still pending; resubscribing", { market: marketId });
-        this.sendOrderbookSubscribe(marketId);
+        this.logger.warn("Lighter orderbook snapshot still pending; reconnecting", { market: marketId });
+        this.resetWs(`Lighter snapshot pending for ${marketId}`);
       }, this.config.wsResubscribeMs ?? 5000);
 
       timeout = setTimeout(() => {
@@ -259,6 +278,7 @@ export class LighterClient {
     const ws = this.ws;
     this.ws = null;
     this.connecting = false;
+    this.wsSubscribedMarketIds.clear();
     if (!ws) return;
     this.logger.warn("Lighter WS reconnecting", { reason });
     try {
@@ -273,6 +293,7 @@ export class LighterClient {
     const ws = this.ws;
     this.ws = null;
     this.connecting = false;
+    this.wsSubscribedMarketIds.clear();
     if (!ws) return;
     try {
       ws.terminate();
