@@ -37,6 +37,10 @@ STALE_BOOK_MS=15000
 ENTRY_EDGE_BPS=50
 EXIT_EDGE_BPS=0
 MAX_BOOK_SPREAD_BPS=100
+MAX_BOOK_MID_MOVE_BPS=500
+MAX_CROSS_VENUE_MID_DIFF_BPS=300
+EXCHANGES=cascade,risex,lighter
+ROUTE_PAIRS=lighter:cascade,lighter:risex
 ```
 
 If you previously copied an older `.env`, make sure the market ids are updated:
@@ -65,6 +69,15 @@ RISEX_POLL_INTERVAL_MS=1000
 RISEX_RATE_LIMIT_BACKOFF_MS=10000
 RISEX_LOG_INTERVAL_MS=10000
 RISEX_ERROR_LOG_INTERVAL_MS=10000
+LIGHTER_BASE_URL=https://mainnet.zklighter.elliot.ai
+LIGHTER_API_PREFIX=/api/v1
+LIGHTER_TIMEOUT_MS=2500
+LIGHTER_ORDERBOOK_TRANSPORT=ws
+LIGHTER_WS_URL=wss://mainnet.zklighter.elliot.ai/stream
+LIGHTER_WS_RESUBSCRIBE_MS=5000
+LIGHTER_LOG_INTERVAL_MS=10000
+LIGHTER_MARKET_BTC=1
+LIGHTER_MARKET_ETH=0
 ```
 
 Switch to live trading only after live market data, balances, Telegram alerts, and paper fills look correct:

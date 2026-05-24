@@ -1,8 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consumeNotional, evaluateArbitrage, evaluateExitArbitrage } from "../src/core/arbitrage.js";
+import {
+  consumeNotional,
+  evaluateArbitrage,
+  evaluateArbitrageAcrossBooks,
+  evaluateExitArbitrage,
+} from "../src/core/arbitrage.js";
 import { normalizeOrderbook } from "../src/clients/normalize.js";
 import { CascadeClient } from "../src/clients/cascade.js";
+import { LighterClient } from "../src/clients/lighter.js";
 import { RisexClient } from "../src/clients/risex.js";
 import { bookSpreadBps, checkBookHealth, checkBookMove, checkCrossVenueMid } from "../src/core/risk.js";
 
@@ -179,6 +185,58 @@ test("evaluateArbitrage matches the same base size on both legs", () => {
   assert.equal(opp.expectedPnlUsd, 10);
 });
 
+test("evaluateArbitrageAcrossBooks selects the best configured Lighter route", () => {
+  const books = {
+    lighter: normalizeOrderbook({
+      exchange: "lighter",
+      symbol: "BTC",
+      market: "1",
+      raw: {
+        bids: [[99.9, 10]],
+        asks: [[100, 10]],
+      },
+    }),
+    cascade: normalizeOrderbook({
+      exchange: "cascade",
+      symbol: "BTC",
+      market: "BTC-USD-PERP",
+      raw: {
+        bids: [[99.7, 10]],
+        asks: [[99.8, 10]],
+      },
+    }),
+    risex: normalizeOrderbook({
+      exchange: "risex",
+      symbol: "BTC",
+      market: "1",
+      raw: {
+        bids: [[101, 10]],
+        asks: [[101.2, 10]],
+      },
+    }),
+  };
+
+  const opp = evaluateArbitrageAcrossBooks({
+    symbol: "BTC",
+    books,
+    routePairs: [
+      ["lighter", "cascade"],
+      ["lighter", "risex"],
+    ],
+    config: {
+      maxTradeUsd: 1000,
+      minTradeUsd: 10,
+      entryEdgeBps: 1,
+      takerFeeBps: 0,
+      slippageBufferBps: 0,
+    },
+  });
+
+  assert.equal(opp.buyExchange, "lighter");
+  assert.equal(opp.sellExchange, "risex");
+  assert.ok(opp.netBps > 90);
+});
+
 test("evaluateExitArbitrage closes when entry spread returns to exit threshold", () => {
   const cascadeBook = normalizeOrderbook({
     exchange: "cascade",
@@ -335,6 +393,93 @@ test("CascadeClient preserves the real last update time for stale detection", ()
 
   const book = client.bookFromCache("BTC", "BTC-USD-PERP", 10);
   assert.equal(book.receivedAt, 12345);
+});
+
+test("LighterClient applies WebSocket orderbook snapshots and deltas", () => {
+  const client = new LighterClient(
+    {
+      baseUrl: "https://mainnet.zklighter.elliot.ai",
+      apiPrefix: "/api/v1",
+      markets: { BTC: "1" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://mainnet.zklighter.elliot.ai/stream",
+    },
+    noopLogger(),
+  );
+
+  client.handleWsMessage({
+    channel: "order_book:1",
+    order_book: {
+      bids: [{ price: "100", size: "1" }],
+      asks: [{ price: "101", size: "2" }],
+      nonce: 10,
+      begin_nonce: 0,
+      offset: 1000,
+    },
+    timestamp: Date.now(),
+    type: "update/order_book",
+  });
+
+  const snapshot = client.bookFromCache("BTC", "1", 10);
+  assert.equal(snapshot.bestBid, 100);
+  assert.equal(snapshot.bestAsk, 101);
+  assert.equal(snapshot.bids[0].size, 1);
+  assert.equal(snapshot.nonce, 10);
+
+  client.handleWsMessage({
+    channel: "order_book:1",
+    order_book: {
+      bids: [{ price: "100", size: "0" }],
+      asks: [{ price: "102", size: "1.5" }],
+      nonce: 11,
+      begin_nonce: 10,
+      offset: 1001,
+    },
+    timestamp: Date.now(),
+    type: "update/order_book",
+  });
+
+  const updated = client.bookFromCache("BTC", "1", 10);
+  assert.equal(updated.bestBid, null);
+  assert.equal(updated.bestAsk, 101);
+  assert.equal(updated.asks[1].price, 102);
+  assert.equal(updated.nonce, 11);
+});
+
+test("LighterClient drops local book on nonce gap", () => {
+  const client = new LighterClient(
+    {
+      baseUrl: "https://mainnet.zklighter.elliot.ai",
+      apiPrefix: "/api/v1",
+      markets: { ETH: "0" },
+      orderbookTransport: "ws",
+      wsUrl: "wss://mainnet.zklighter.elliot.ai/stream",
+    },
+    noopLogger(),
+  );
+
+  client.handleWsMessage({
+    channel: "order_book:0",
+    order_book: {
+      bids: [{ price: "2000", size: "1" }],
+      asks: [{ price: "2001", size: "1" }],
+      nonce: 20,
+      begin_nonce: 0,
+    },
+    type: "update/order_book",
+  });
+  client.handleWsMessage({
+    channel: "order_book:0",
+    order_book: {
+      bids: [{ price: "2002", size: "1" }],
+      asks: [],
+      nonce: 22,
+      begin_nonce: 19,
+    },
+    type: "update/order_book",
+  });
+
+  assert.equal(client.bookFromCache("ETH", "0", 10), null);
 });
 
 test("checkBookHealth rejects sparse books with excessive internal spread", () => {

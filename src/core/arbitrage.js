@@ -175,22 +175,38 @@ export function evaluateDirection({
 }
 
 export function evaluateArbitrage({ symbol, cascadeBook, risexBook, config }) {
+  return evaluateArbitrageAcrossBooks({
+    symbol,
+    books: { cascade: cascadeBook, risex: risexBook },
+    routePairs: [["cascade", "risex"]],
+    config,
+  });
+}
+
+export function evaluateArbitrageAcrossBooks({ symbol, books, routePairs, config }) {
   const directions = [
-    evaluateDirection({
-      symbol,
-      buyExchange: "cascade",
-      sellExchange: "risex",
-      buyBook: cascadeBook,
-      sellBook: risexBook,
-      config,
-    }),
-    evaluateDirection({
-      symbol,
-      buyExchange: "risex",
-      sellExchange: "cascade",
-      buyBook: risexBook,
-      sellBook: cascadeBook,
-      config,
+    ...routePairs.flatMap(([leftExchange, rightExchange]) => {
+      const leftBook = books[leftExchange];
+      const rightBook = books[rightExchange];
+      if (!leftBook || !rightBook) return [];
+      return [
+        evaluateDirection({
+          symbol,
+          buyExchange: leftExchange,
+          sellExchange: rightExchange,
+          buyBook: leftBook,
+          sellBook: rightBook,
+          config,
+        }),
+        evaluateDirection({
+          symbol,
+          buyExchange: rightExchange,
+          sellExchange: leftExchange,
+          buyBook: rightBook,
+          sellBook: leftBook,
+          config,
+        }),
+      ];
     }),
   ].filter(Boolean);
 
@@ -199,8 +215,16 @@ export function evaluateArbitrage({ symbol, cascadeBook, risexBook, config }) {
 }
 
 export function evaluateExitArbitrage({ symbol, position, cascadeBook, risexBook, config }) {
+  return evaluateExitArbitrageAcrossBooks({
+    symbol,
+    position,
+    books: { cascade: cascadeBook, risex: risexBook },
+    config,
+  });
+}
+
+export function evaluateExitArbitrageAcrossBooks({ symbol, position, books, config }) {
   if (!position || position.symbol !== symbol) return null;
-  const books = { cascade: cascadeBook, risex: risexBook };
   const originalBuyBook = books[position.buyExchange];
   const originalSellBook = books[position.sellExchange];
   const closeBuyBook = books[position.sellExchange];

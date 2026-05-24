@@ -88,17 +88,37 @@ function render(state) {
 }
 
 function marketHtml(symbol, books) {
-  const c = books.cascade ?? {};
-  const r = books.risex ?? {};
+  const entries = Object.entries(books ?? {});
+  const marketLabels = entries
+    .map(([exchange, book]) => `${labelExchange(exchange)} ${book.market ?? "-"}`)
+    .join(" / ");
   return `<div class="market">
-    <div class="market-head"><strong>${symbol}</strong><span>${c.market ?? "-"} / ${r.market ?? "-"}</span></div>
+    <div class="market-head"><strong>${symbol}</strong><span>${marketLabels || "-"}</span></div>
     <div class="quote-grid">
-      <span>Cascade bid <strong>${fmt(c.bestBid, 4)}</strong> / ${fmt(c.bids?.[0]?.size, 6)} <small>age ${ageLabel(c.receivedAt)} / ${fmt(c.latencyMs, 0)}ms / spread ${fmt(c.spreadBps, 1)}bps</small></span>
-      <span>Cascade ask <strong>${fmt(c.bestAsk, 4)}</strong> / ${fmt(c.asks?.[0]?.size, 6)}</span>
-      <span>RISEx bid <strong>${fmt(r.bestBid, 4)}</strong> / ${fmt(r.bids?.[0]?.size, 6)} <small>age ${ageLabel(r.receivedAt)} / ${fmt(r.latencyMs, 0)}ms / spread ${fmt(r.spreadBps, 1)}bps${r.rateLimited ? " / rate limited" : ""}</small></span>
-      <span>RISEx ask <strong>${fmt(r.bestAsk, 4)}</strong> / ${fmt(r.asks?.[0]?.size, 6)}</span>
+      ${entries.map(([exchange, book]) => exchangeQuoteHtml(exchange, book)).join("")}
     </div>
   </div>`;
+}
+
+function exchangeQuoteHtml(exchange, book) {
+  const extra = [
+    `age ${ageLabel(book.receivedAt)}`,
+    `${fmt(book.latencyMs, 0)}ms`,
+    `spread ${fmt(book.spreadBps, 1)}bps`,
+    book.rateLimited ? "rate limited" : "",
+    book.nonce ? `nonce ${book.nonce}` : "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+  return `<span>${labelExchange(exchange)} bid <strong>${fmt(book.bestBid, 4)}</strong> / ${fmt(book.bids?.[0]?.size, 6)}
+      <small>${extra}</small>
+    </span>
+    <span>${labelExchange(exchange)} ask <strong>${fmt(book.bestAsk, 4)}</strong> / ${fmt(book.asks?.[0]?.size, 6)}</span>`;
+}
+
+function labelExchange(exchange) {
+  const labels = { cascade: "Cascade", risex: "RISEx", lighter: "Lighter" };
+  return labels[exchange] ?? exchange;
 }
 
 function opportunityHtml(opp) {

@@ -14,6 +14,10 @@ export function loadConfig() {
   }
   const entryEdgeBps = envNumber("ENTRY_EDGE_BPS", 50);
   const exitEdgeBps = envNumber("EXIT_EDGE_BPS", 0);
+  const exchanges = envList("EXCHANGES", ["cascade", "risex", "lighter"]).map((exchange) =>
+    exchange.toLowerCase(),
+  );
+  const routePairs = parseRoutePairs(envString("ROUTE_PAIRS", "lighter:cascade,lighter:risex"));
 
   const cfg = {
     server: {
@@ -31,6 +35,8 @@ export function loadConfig() {
       mode: tradingMode,
       enabled: envBool("TRADING_ENABLED", false),
       symbols,
+      exchanges,
+      routePairs,
       loopIntervalMs: envNumber("LOOP_INTERVAL_MS", 50, { min: 50 }),
       orderbookDepth: envNumber("ORDERBOOK_DEPTH", 20, { min: 1 }),
       staleBookMs: envNumber("STALE_BOOK_MS", 15000, { min: 500 }),
@@ -98,10 +104,33 @@ export function loadConfig() {
         ]),
       ),
     },
+    lighter: {
+      name: "lighter",
+      baseUrl: envString("LIGHTER_BASE_URL", "https://mainnet.zklighter.elliot.ai"),
+      apiPrefix: envString("LIGHTER_API_PREFIX", "/api/v1"),
+      timeoutMs: envNumber("LIGHTER_TIMEOUT_MS", 2500, { min: 100 }),
+      retries: envNumber("LIGHTER_RETRIES", 0, { min: 0 }),
+      orderbookTransport: envString("LIGHTER_ORDERBOOK_TRANSPORT", "ws"),
+      wsUrl: envString("LIGHTER_WS_URL", "wss://mainnet.zklighter.elliot.ai/stream"),
+      wsResubscribeMs: envNumber("LIGHTER_WS_RESUBSCRIBE_MS", 5000, { min: 500 }),
+      logIntervalMs: envNumber("LIGHTER_LOG_INTERVAL_MS", 10000, { min: 0 }),
+      markets: Object.fromEntries(
+        symbols.map((symbol) => [
+          symbol,
+          envString(`LIGHTER_MARKET_${symbol}`, symbol === "BTC" ? "1" : symbol === "ETH" ? "0" : symbol),
+        ]),
+      ),
+    },
   };
 
   if (cfg.trading.minTradeUsd > cfg.trading.maxTradeUsd) {
     throw new Error("MIN_TRADE_USD cannot be greater than MAX_TRADE_USD");
+  }
+  if (cfg.trading.exchanges.length < 2) {
+    throw new Error("At least two exchanges must be configured");
+  }
+  if (cfg.trading.routePairs.length === 0) {
+    throw new Error("At least one ROUTE_PAIRS entry must be configured");
   }
   if (cfg.trading.exitEdgeBps > cfg.trading.entryEdgeBps) {
     throw new Error("EXIT_EDGE_BPS cannot be greater than ENTRY_EDGE_BPS");
@@ -112,9 +141,36 @@ export function loadConfig() {
   if (!["rest", "ws"].includes(cfg.risex.orderbookTransport)) {
     throw new Error("RISEX_ORDERBOOK_TRANSPORT must be rest or ws");
   }
+  if (cfg.lighter.orderbookTransport !== "ws") {
+    throw new Error("LIGHTER_ORDERBOOK_TRANSPORT must be ws");
+  }
+  for (const exchange of cfg.trading.exchanges) {
+    if (!["cascade", "risex", "lighter"].includes(exchange)) {
+      throw new Error(`Unsupported exchange in EXCHANGES: ${exchange}`);
+    }
+  }
+  for (const [left, right] of cfg.trading.routePairs) {
+    if (!cfg.trading.exchanges.includes(left) || !cfg.trading.exchanges.includes(right)) {
+      throw new Error(`ROUTE_PAIRS includes disabled exchange: ${left}:${right}`);
+    }
+  }
   if (cfg.trading.mode === "live" && cfg.runtime.marketDataMode !== "live") {
     throw new Error("TRADING_MODE=live requires MARKET_DATA_MODE=live");
   }
 
   return cfg;
+}
+
+function parseRoutePairs(raw) {
+  return String(raw)
+    .split(",")
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const [left, right] = pair.split(":").map((item) => item?.trim().toLowerCase());
+      if (!left || !right || left === right) {
+        throw new Error(`Invalid ROUTE_PAIRS entry: ${pair}`);
+      }
+      return [left, right];
+    });
 }

@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import { CascadeClient } from "./clients/cascade.js";
+import { LighterClient } from "./clients/lighter.js";
 import { MockExchangeClient } from "./clients/mock.js";
 import { RisexClient } from "./clients/risex.js";
 import { ArbitrageEngine } from "./core/engine.js";
@@ -16,24 +17,7 @@ try {
   const cfg = loadConfig();
   const store = new StateStore(cfg.runtime.dataDir);
   const notifier = new TelegramNotifier(cfg.telegram, logger.child("telegram"));
-  const clients =
-    cfg.runtime.marketDataMode === "mock"
-      ? {
-          cascade: new MockExchangeClient({
-            exchange: "cascade",
-            markets: cfg.cascade.markets,
-            skewBps: -6,
-          }),
-          risex: new MockExchangeClient({
-            exchange: "risex",
-            markets: cfg.risex.markets,
-            skewBps: 6,
-          }),
-        }
-      : {
-          cascade: new CascadeClient(cfg.cascade, logger.child("cascade")),
-          risex: new RisexClient(cfg.risex, logger.child("risex")),
-        };
+  const clients = createClients(cfg, logger);
   const executor =
     cfg.trading.mode === "live"
       ? new LiveExecutor({ clients, store, notifier, logger: logger.child("executor") })
@@ -61,6 +45,9 @@ try {
       marketDataMode: cfg.runtime.marketDataMode,
       cascadeOrderbookTransport: cfg.cascade.orderbookTransport,
       risexOrderbookTransport: cfg.risex.orderbookTransport,
+      lighterOrderbookTransport: cfg.lighter.orderbookTransport,
+      exchanges: cfg.trading.exchanges,
+      routePairs: cfg.trading.routePairs.map((pair) => pair.join(":")),
       liveEnabled: cfg.trading.enabled,
     });
     engine.start();
@@ -107,4 +94,36 @@ try {
 } catch (error) {
   logger.error("startup failed", error);
   process.exit(1);
+}
+
+function createClients(cfg, logger) {
+  const factories =
+    cfg.runtime.marketDataMode === "mock"
+      ? {
+          cascade: () =>
+            new MockExchangeClient({
+              exchange: "cascade",
+              markets: cfg.cascade.markets,
+              skewBps: -6,
+            }),
+          risex: () =>
+            new MockExchangeClient({
+              exchange: "risex",
+              markets: cfg.risex.markets,
+              skewBps: 6,
+            }),
+          lighter: () =>
+            new MockExchangeClient({
+              exchange: "lighter",
+              markets: cfg.lighter.markets,
+              skewBps: 0,
+            }),
+        }
+      : {
+          cascade: () => new CascadeClient(cfg.cascade, logger.child("cascade")),
+          risex: () => new RisexClient(cfg.risex, logger.child("risex")),
+          lighter: () => new LighterClient(cfg.lighter, logger.child("lighter")),
+        };
+
+  return Object.fromEntries(cfg.trading.exchanges.map((exchange) => [exchange, factories[exchange]()]));
 }

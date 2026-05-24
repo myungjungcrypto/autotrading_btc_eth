@@ -4,8 +4,8 @@
 
 The system is a single Node.js service with four layers:
 
-1. Exchange adapters normalize Cascade and RISEx WebSocket orderbook streams into a common orderbook and order interface. REST remains available for account, history, and fallback operations. A mock adapter is available for local smoke tests.
-2. The arbitrage engine evaluates BTC and ETH two-leg opportunities in both directions, opens one position per symbol, and then watches that position for an exit spread.
+1. Exchange adapters normalize Lighter, Cascade, and RISEx WebSocket orderbook streams into a common orderbook and order interface. REST remains available for account, history, and metadata operations. A mock adapter is available for local smoke tests.
+2. The arbitrage engine evaluates BTC and ETH two-leg opportunities across configured route pairs, opens one position per symbol, and then watches that position for an exit spread.
 3. Executors apply safety policy. `paper` mode records simulated open/close fills. `live` mode is gated and sends IOC-style paired orders through adapters.
 4. The dashboard, Telegram notifier, and daily report read from the same state store.
 
@@ -31,7 +31,8 @@ test/             Node test runner unit tests
 
 ```mermaid
 flowchart LR
-  C["Cascade WS"] --> N["Normalize Orderbook"]
+  L["Lighter WS"] --> N["Normalize Orderbook"]
+  C["Cascade WS"] --> N
   R["RISEx WS"] --> N
   N --> E["Arbitrage Engine"]
   E --> X["Executor: paper or live"]
@@ -47,7 +48,8 @@ flowchart LR
 - Empty or crossed local book: malformed levels are ignored; impossible opportunities are rejected.
 - Wide venue book spread: if either venue's own best bid/ask spread exceeds `MAX_BOOK_SPREAD_BPS`, the symbol is skipped to avoid treating stale or sparse liquidity as an arbitrage signal.
 - Sudden venue jump: if a venue mid price moves more than `MAX_BOOK_MID_MOVE_BPS` from the last healthy book, that symbol is skipped until a healthy book is seen again.
-- Cross-venue divergence: if Cascade and RISEx mid prices differ by more than `MAX_CROSS_VENUE_MID_DIFF_BPS`, the symbol is skipped because one feed is likely stale, sparse, or wrong.
+- Cross-venue divergence: if a configured route pair's mid prices differ by more than `MAX_CROSS_VENUE_MID_DIFF_BPS`, that route is skipped because one feed is likely stale, sparse, or wrong.
+- Lighter nonce gap: Lighter orderbook updates are discarded and resubscribed when `begin_nonce` does not match the previous `nonce`.
 - Shallow liquidity: executable size is matched level-by-level with the same base asset size on both venues, and stops before the first marginal level that no longer clears `ENTRY_EDGE_BPS`.
 - Open position lifecycle: while a symbol has an open position, new entries are blocked and the engine only checks whether the spread has compressed to `EXIT_EDGE_BPS`.
 - One-leg failure in live mode: live executor records the failed pair, pauses the engine, and sends an alert so the position can be manually repaired or handled by a future hedge module.
@@ -67,4 +69,4 @@ flowchart LR
 
 ## Performance Evaluation
 
-The hot path is O(symbols * depth) because each entry or exit direction walks normalized orderbook levels once. BTC and ETH are evaluated in parallel. With depth 20 and a 50ms target loop, the CPU cost is still small on a small EC2 instance. Network latency dominates initial snapshots, but steady-state decisions read local WebSocket caches for both venues. RISEx production WebSocket updates arrive continuously as orderbook changes are published, so the 50ms engine loop can react as soon as the newest streamed book is present.
+The hot path is O(symbols * route-pairs * depth) because each entry or exit direction walks normalized orderbook levels once. BTC and ETH are evaluated in parallel. With depth 20 and a 50ms target loop, the CPU cost is still small on a small EC2 instance. Network latency dominates initial snapshots, but steady-state decisions read local WebSocket caches. Lighter orderbook updates are documented as 50ms batches, so the 50ms engine loop can react as soon as the newest streamed book is present.

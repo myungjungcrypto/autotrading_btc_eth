@@ -118,5 +118,11 @@ function publicConfig(config) {
       apiPrefix: config.risex.apiPrefix,
       markets: config.risex.markets,
     },
+    lighter: {
+      baseUrl: config.lighter.baseUrl,
+      apiPrefix: config.lighter.apiPrefix,
+      markets: config.lighter.markets,
+      wsUrl: config.lighter.wsUrl,
+    },
   };
 }

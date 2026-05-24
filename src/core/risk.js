@@ -72,25 +72,27 @@ export function checkBookMove(book, previousBook, { maxBookMidMoveBps, staleBook
   };
 }
 
-export function checkCrossVenueMid(cascadeBook, risexBook, maxCrossVenueMidDiffBps) {
+export function checkCrossVenueMid(leftBook, rightBook, maxCrossVenueMidDiffBps) {
   if ((maxCrossVenueMidDiffBps ?? 0) <= 0) return { ok: true };
 
-  const cascadeMid = bookMid(cascadeBook);
-  const risexMid = bookMid(risexBook);
-  if (!Number.isFinite(cascadeMid) || !Number.isFinite(risexMid)) return { ok: true };
+  const leftMid = bookMid(leftBook);
+  const rightMid = bookMid(rightBook);
+  if (!Number.isFinite(leftMid) || !Number.isFinite(rightMid)) return { ok: true };
 
-  const averageMid = (cascadeMid + risexMid) / 2;
-  const diffBps = (Math.abs(cascadeMid - risexMid) / averageMid) * 10000;
+  const averageMid = (leftMid + rightMid) / 2;
+  const diffBps = (Math.abs(leftMid - rightMid) / averageMid) * 10000;
   if (diffBps <= maxCrossVenueMidDiffBps) return { ok: true };
 
   return {
     ok: false,
     reason: "cross_venue_mid_divergence",
     details: {
-      cascadeMarket: cascadeBook.market,
-      risexMarket: risexBook.market,
-      cascadeMid,
-      risexMid,
+      leftExchange: leftBook.exchange,
+      rightExchange: rightBook.exchange,
+      leftMarket: leftBook.market,
+      rightMarket: rightBook.market,
+      leftMid,
+      rightMid,
       diffBps,
       maxCrossVenueMidDiffBps,
     },

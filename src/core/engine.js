@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { evaluateArbitrage, evaluateExitArbitrage } from "./arbitrage.js";
+import { evaluateArbitrageAcrossBooks, evaluateExitArbitrageAcrossBooks } from "./arbitrage.js";
 import {
   isBookStale,
   checkBookHealth,
@@ -72,86 +72,101 @@ export class ArbitrageEngine extends EventEmitter {
 
   async evaluateSymbol(symbol) {
     const previousHealthyBooks = this.lastHealthyBooks.get(symbol) ?? {};
-    const [cascadeBook, risexBook] = await Promise.all([
-      this.clients.cascade.getOrderbook(symbol, this.config.orderbookDepth),
-      this.clients.risex.getOrderbook(symbol, this.config.orderbookDepth),
-    ]);
+    const clientEntries = Object.entries(this.clients);
+    const results = await Promise.allSettled(
+      clientEntries.map(([, client]) => client.getOrderbook(symbol, this.config.orderbookDepth)),
+    );
 
-    const displayBooks = {
-      cascade: stripRawBook(cascadeBook),
-      risex: stripRawBook(risexBook),
-    };
+    const books = {};
+    for (let i = 0; i < results.length; i += 1) {
+      const [exchange] = clientEntries[i];
+      const result = results[i];
+      if (result.status === "fulfilled") {
+        books[exchange] = result.value;
+      } else {
+        const details = compactError(result.reason);
+        this.store.state.lastError = details;
+        if (this.shouldLogSymbolError(symbol, { ...details, exchange })) {
+          this.store.appendEvent("venue.error", { symbol, exchange, ...details });
+          this.logger.error(`symbol ${symbol} ${exchange} failed`, result.reason);
+        }
+      }
+    }
+
+    const displayBooks = Object.fromEntries(
+      Object.entries(books).map(([exchange, book]) => [exchange, stripRawBook(book)]),
+    );
     this.store.updateBooks(symbol, displayBooks);
 
     const now = Date.now();
-    if (
-      isBookStale(cascadeBook, this.config.staleBookMs, now) ||
-      isBookStale(risexBook, this.config.staleBookMs, now)
-    ) {
-      this.store.updateOpportunity(symbol, null);
-      if (this.shouldLogSymbolSkip(symbol, "stale_book")) {
-        this.store.appendEvent("symbol.skipped", { symbol, reason: "stale_book" });
-      }
-      return;
-    }
-
-    const bookHealth = [
-      checkBookHealth(cascadeBook, this.config.maxBookSpreadBps),
-      checkBookHealth(risexBook, this.config.maxBookSpreadBps),
-    ].find((result) => !result.ok);
-    if (bookHealth) {
-      this.store.updateOpportunity(symbol, null);
-      if (this.shouldLogSymbolSkip(symbol, bookHealth.reason)) {
-        this.store.appendEvent("symbol.skipped", {
-          symbol,
-          reason: bookHealth.reason,
-          details: bookHealth.details,
+    const healthyBooks = {};
+    const healthyDisplayBooks = {};
+    for (const [exchange, book] of Object.entries(books)) {
+      if (isBookStale(book, this.config.staleBookMs, now)) {
+        this.logSymbolSkip(symbol, "stale_book", exchange, {
+          exchange,
+          market: book.market,
+          receivedAt: book.receivedAt,
         });
+        continue;
       }
-      return;
-    }
 
-    const dataQuality = [
-      checkBookMove(cascadeBook, previousHealthyBooks.cascade, {
+      const bookHealth = checkBookHealth(book, this.config.maxBookSpreadBps);
+      if (!bookHealth.ok) {
+        this.logSymbolSkip(symbol, bookHealth.reason, exchange, bookHealth.details);
+        continue;
+      }
+
+      const dataQuality = checkBookMove(book, previousHealthyBooks[exchange], {
         maxBookMidMoveBps: this.config.maxBookMidMoveBps,
         staleBookMs: this.config.staleBookMs,
         now,
-      }),
-      checkBookMove(risexBook, previousHealthyBooks.risex, {
-        maxBookMidMoveBps: this.config.maxBookMidMoveBps,
-        staleBookMs: this.config.staleBookMs,
-        now,
-      }),
-      checkCrossVenueMid(cascadeBook, risexBook, this.config.maxCrossVenueMidDiffBps),
-    ].find((result) => !result.ok);
-    if (dataQuality) {
-      this.store.updateOpportunity(symbol, null);
-      if (this.shouldLogSymbolSkip(symbol, dataQuality.reason)) {
-        this.store.appendEvent("symbol.skipped", {
-          symbol,
-          reason: dataQuality.reason,
-          details: dataQuality.details,
-        });
+      });
+      if (!dataQuality.ok) {
+        this.logSymbolSkip(symbol, dataQuality.reason, exchange, dataQuality.details);
+        continue;
       }
-      return;
+
+      healthyBooks[exchange] = book;
+      healthyDisplayBooks[exchange] = displayBooks[exchange];
     }
 
-    this.lastHealthyBooks.set(symbol, displayBooks);
+    this.lastHealthyBooks.set(symbol, { ...previousHealthyBooks, ...healthyDisplayBooks });
+
+    if (Object.keys(healthyBooks).length < 2) {
+      this.store.updateOpportunity(symbol, null);
+      this.logSymbolSkip(symbol, "insufficient_healthy_books");
+      return;
+    }
 
     const state = this.store.snapshot();
     const openPosition = state.openPositions?.[symbol];
+    let routePairs;
+    if (openPosition) {
+      const closePair = [openPosition.buyExchange, openPosition.sellExchange];
+      const closeRouteHealth = this.checkRoutePair(symbol, healthyBooks, closePair);
+      routePairs = closeRouteHealth.ok ? [closePair] : [];
+    } else {
+      routePairs = this.healthyRoutePairs(symbol, healthyBooks);
+    }
+
+    if (routePairs.length === 0) {
+      this.store.updateOpportunity(symbol, null);
+      this.logSymbolSkip(symbol, "no_healthy_route_pairs");
+      return;
+    }
+
     const opportunity = openPosition
-      ? evaluateExitArbitrage({
+      ? evaluateExitArbitrageAcrossBooks({
           symbol,
           position: openPosition,
-          cascadeBook,
-          risexBook,
+          books: healthyBooks,
           config: this.config,
         })
-      : evaluateArbitrage({
+      : evaluateArbitrageAcrossBooks({
           symbol,
-          cascadeBook,
-          risexBook,
+          books: healthyBooks,
+          routePairs,
           config: this.config,
         });
     this.store.updateOpportunity(symbol, opportunity);
@@ -185,7 +200,7 @@ export class ArbitrageEngine extends EventEmitter {
   shouldLogSymbolError(symbol, details) {
     const interval = this.config.symbolErrorLogIntervalMs ?? 10000;
     if (interval <= 0) return false;
-    const key = `${symbol}:${details.name ?? "error"}:${details.message ?? ""}`;
+    const key = `${symbol}:${details.exchange ?? ""}:${details.name ?? "error"}:${details.message ?? ""}`;
     const now = Date.now();
     const last = this.lastSymbolErrorLogAt.get(key) ?? 0;
     if (now - last < interval) return false;
@@ -194,14 +209,48 @@ export class ArbitrageEngine extends EventEmitter {
   }
 
   shouldLogSymbolSkip(symbol, reason) {
+    return this.shouldLogSymbolSkipKey(symbol, reason);
+  }
+
+  shouldLogSymbolSkipKey(symbol, reason, scope = "") {
     const interval = this.config.symbolErrorLogIntervalMs ?? 10000;
     if (interval <= 0) return false;
-    const key = `${symbol}:${reason}`;
+    const key = `${symbol}:${reason}:${scope}`;
     const now = Date.now();
     const last = this.lastSymbolSkipLogAt.get(key) ?? 0;
     if (now - last < interval) return false;
     this.lastSymbolSkipLogAt.set(key, now);
     return true;
+  }
+
+  logSymbolSkip(symbol, reason, scope = "", details = undefined) {
+    if (!this.shouldLogSymbolSkipKey(symbol, reason, scope)) return;
+    this.store.appendEvent("symbol.skipped", { symbol, reason, details });
+  }
+
+  healthyRoutePairs(symbol, books) {
+    const routePairs = [];
+    for (const pair of this.config.routePairs) {
+      const result = this.checkRoutePair(symbol, books, pair);
+      if (result.ok) routePairs.push(pair);
+    }
+    return routePairs;
+  }
+
+  checkRoutePair(symbol, books, [leftExchange, rightExchange]) {
+    const leftBook = books[leftExchange];
+    const rightBook = books[rightExchange];
+    const scope = `${leftExchange}:${rightExchange}`;
+    if (!leftBook || !rightBook) {
+      this.logSymbolSkip(symbol, "route_books_unavailable", scope, { leftExchange, rightExchange });
+      return { ok: false };
+    }
+    const midHealth = checkCrossVenueMid(leftBook, rightBook, this.config.maxCrossVenueMidDiffBps);
+    if (!midHealth.ok) {
+      this.logSymbolSkip(symbol, midHealth.reason, scope, midHealth.details);
+      return { ok: false };
+    }
+    return { ok: true };
   }
 }
 
@@ -217,6 +266,9 @@ function stripRawBook(book) {
     spreadBps: bookSpreadBps(book),
     rateLimited: book.rateLimited,
     rateLimitBackoffUntil: book.rateLimitBackoffUntil,
+    nonce: book.nonce,
+    beginNonce: book.beginNonce,
+    offset: book.offset,
     bids: book.bids.slice(0, 10),
     asks: book.asks.slice(0, 10),
   };
