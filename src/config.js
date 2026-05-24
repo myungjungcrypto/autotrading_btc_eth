@@ -118,6 +118,7 @@ export function loadConfig() {
       ),
       wsReadonly: lighterWsReadonly,
       wsResubscribeMs: envNumber("LIGHTER_WS_RESUBSCRIBE_MS", 5000, { min: 500 }),
+      wsPingIntervalMs: envNumber("LIGHTER_WS_PING_INTERVAL_MS", 60000, { min: 10000 }),
       wsReconnectBackoffMs: envNumber("LIGHTER_WS_RECONNECT_BACKOFF_MS", 10000, { min: 1000 }),
       wsReconnectBackoffMaxMs: envNumber("LIGHTER_WS_RECONNECT_BACKOFF_MAX_MS", 120000, { min: 1000 }),
       logIntervalMs: envNumber("LIGHTER_LOG_INTERVAL_MS", 10000, { min: 0 }),

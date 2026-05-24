@@ -10,6 +10,10 @@ Use read-only mode for public market data. Without it, some regions or server
 states can reject reconnect attempts even though the stream works briefly after
 startup.
 
+The server expects the client to send at least one frame within every 2-minute
+window. This app sends a WebSocket ping frame every 60 seconds to keep the
+public orderbook connection alive.
+
 The public WebSocket order book channel is:
 
 ```json

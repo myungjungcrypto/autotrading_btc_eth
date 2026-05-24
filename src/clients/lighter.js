@@ -18,6 +18,7 @@ export class LighterClient {
     this.nextConnectAt = 0;
     this.reconnectFailures = 0;
     this.lastBackoffLogAt = 0;
+    this.pingTimer = null;
     this.closed = false;
   }
 
@@ -87,6 +88,7 @@ export class LighterClient {
       this.nextConnectAt = 0;
       this.reconnectFailures = 0;
       this.lastBackoffLogAt = 0;
+      this.startKeepalive();
       for (const marketId of this.subscribedMarketIds) this.sendOrderbookSubscribe(marketId);
       this.logger.info("Lighter WS connected", {
         url: this.config.wsUrl,
@@ -106,6 +108,7 @@ export class LighterClient {
       const reason = reasonBuffer?.toString?.() || `close ${code}`;
       this.connecting = false;
       this.ws = null;
+      this.stopKeepalive();
       this.rejectAllWaiters(new Error("Lighter WS closed before orderbook snapshot"));
       if (!this.closed) this.scheduleReconnect(reason);
       this.logger.warn("Lighter WS closed");
@@ -114,6 +117,7 @@ export class LighterClient {
     this.ws.on("error", (error) => {
       this.connecting = false;
       this.ws = null;
+      this.stopKeepalive();
       this.rejectAllWaiters(error);
       this.scheduleReconnect(error.message);
       this.logger.warn("Lighter WS error", { message: error.message });
@@ -296,6 +300,7 @@ export class LighterClient {
     const ws = this.ws;
     this.ws = null;
     this.connecting = false;
+    this.stopKeepalive();
     this.wsSubscribedMarketIds.clear();
     this.scheduleReconnect(reason);
     if (!ws) return;
@@ -313,6 +318,7 @@ export class LighterClient {
     const ws = this.ws;
     this.ws = null;
     this.connecting = false;
+    this.stopKeepalive();
     this.wsSubscribedMarketIds.clear();
     if (!ws) return;
     try {
@@ -358,6 +364,28 @@ export class LighterClient {
       backoffMs,
       failures: this.reconnectFailures,
     });
+  }
+
+  startKeepalive() {
+    this.stopKeepalive();
+    const interval = this.config.wsPingIntervalMs ?? 60000;
+    if (interval <= 0) return;
+    this.pingTimer = setInterval(() => {
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+      try {
+        this.ws.ping();
+      } catch (error) {
+        this.logger.warn("Lighter WS ping failed", { message: error.message });
+        this.resetWs(error.message);
+      }
+    }, interval);
+    this.pingTimer.unref?.();
+  }
+
+  stopKeepalive() {
+    if (!this.pingTimer) return;
+    clearInterval(this.pingTimer);
+    this.pingTimer = null;
   }
 }
 
