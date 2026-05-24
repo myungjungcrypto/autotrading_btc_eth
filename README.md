@@ -28,7 +28,7 @@ Cascade public docs provided in this repository confirm auth and JWT usage for t
 
 RISEx market-data defaults match the production web app at `https://www.rise.trade/en/trade/ETH-PERP`: REST is `https://api.rise.trade/api/v1` and WebSocket is `wss://api.rise.trade/ws/`. Public orderbook data uses the RISEx `orderbook` WebSocket channel by default, so the 50ms engine loop reads the latest local cache instead of hammering REST. RISEx live order submission requires a valid permit. On testnet only, RISEx docs expose a server-signing escape hatch via `signer_private_key`; this app supports it only when `RISEX_ENABLE_TESTNET_SERVER_SIGNING=true`. For production, replace that with client-side EIP-712 permit signing before enabling live trading.
 
-Lighter market-data defaults use `wss://mainnet.zklighter.elliot.ai/stream` and the public `order_book/{MARKET_INDEX}` channel. The client verifies update continuity with `begin_nonce` and `nonce`; if a gap is detected, it discards the local book and resubscribes. Lighter live order submission is intentionally not implemented yet.
+Lighter market-data defaults use the read-only `wss://mainnet.zklighter.elliot.ai/stream?readonly=true` stream and the public `order_book/{MARKET_INDEX}` channel. The client verifies update continuity with `begin_nonce` and `nonce`; if a gap is detected, it discards the local book and resubscribes with exponential reconnect backoff. Lighter live order submission is intentionally not implemented yet.
 
 See [docs/architecture.md](docs/architecture.md) for architecture, data flow, edge cases, error handling, and performance notes.
 

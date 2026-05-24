@@ -4,7 +4,11 @@
 
 - REST base URL: `https://mainnet.zklighter.elliot.ai`
 - API prefix: `/api/v1`
-- WebSocket URL: `wss://mainnet.zklighter.elliot.ai/stream`
+- WebSocket URL: `wss://mainnet.zklighter.elliot.ai/stream?readonly=true`
+
+Use read-only mode for public market data. Without it, some regions or server
+states can reject reconnect attempts even though the stream works briefly after
+startup.
 
 The public WebSocket order book channel is:
 

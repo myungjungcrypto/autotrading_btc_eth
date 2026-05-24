@@ -18,6 +18,7 @@ export function loadConfig() {
     exchange.toLowerCase(),
   );
   const routePairs = parseRoutePairs(envString("ROUTE_PAIRS", "lighter:cascade,lighter:risex"));
+  const lighterWsReadonly = envBool("LIGHTER_WS_READONLY", true);
 
   const cfg = {
     server: {
@@ -111,9 +112,14 @@ export function loadConfig() {
       timeoutMs: envNumber("LIGHTER_TIMEOUT_MS", 2500, { min: 100 }),
       retries: envNumber("LIGHTER_RETRIES", 0, { min: 0 }),
       orderbookTransport: envString("LIGHTER_ORDERBOOK_TRANSPORT", "ws"),
-      wsUrl: normalizeLighterWsUrl(envString("LIGHTER_WS_URL", "wss://mainnet.zklighter.elliot.ai/stream")),
+      wsUrl: normalizeLighterWsUrl(
+        envString("LIGHTER_WS_URL", "wss://mainnet.zklighter.elliot.ai/stream"),
+        { readonly: lighterWsReadonly },
+      ),
+      wsReadonly: lighterWsReadonly,
       wsResubscribeMs: envNumber("LIGHTER_WS_RESUBSCRIBE_MS", 5000, { min: 500 }),
       wsReconnectBackoffMs: envNumber("LIGHTER_WS_RECONNECT_BACKOFF_MS", 10000, { min: 1000 }),
+      wsReconnectBackoffMaxMs: envNumber("LIGHTER_WS_RECONNECT_BACKOFF_MAX_MS", 120000, { min: 1000 }),
       logIntervalMs: envNumber("LIGHTER_LOG_INTERVAL_MS", 10000, { min: 0 }),
       markets: Object.fromEntries(
         symbols.map((symbol) => [
@@ -176,7 +182,7 @@ function parseRoutePairs(raw) {
     });
 }
 
-function normalizeLighterWsUrl(raw) {
+export function normalizeLighterWsUrl(raw, options = {}) {
   let url = String(raw ?? "").trim();
   if (!url) return url;
   url = url.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
@@ -184,6 +190,9 @@ function normalizeLighterWsUrl(raw) {
     const parsed = new URL(url);
     if (parsed.hostname.includes("zklighter") && (!parsed.pathname || parsed.pathname === "/")) {
       parsed.pathname = "/stream";
+    }
+    if (options.readonly !== false && parsed.hostname.includes("zklighter")) {
+      parsed.searchParams.set("readonly", "true");
     }
     return parsed.toString().replace(/\/$/, parsed.pathname === "/" ? "/" : "");
   } catch {

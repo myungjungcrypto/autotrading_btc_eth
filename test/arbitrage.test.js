@@ -10,7 +10,9 @@ import { normalizeOrderbook } from "../src/clients/normalize.js";
 import { CascadeClient } from "../src/clients/cascade.js";
 import { LighterClient } from "../src/clients/lighter.js";
 import { RisexClient } from "../src/clients/risex.js";
+import { ArbitrageEngine } from "../src/core/engine.js";
 import { bookSpreadBps, checkBookHealth, checkBookMove, checkCrossVenueMid } from "../src/core/risk.js";
+import { normalizeLighterWsUrl } from "../src/config.js";
 
 test("consumeNotional calculates VWAP across levels", () => {
   const result = consumeNotional(
@@ -604,6 +606,94 @@ test("LighterClient reports reconnect backoff when no cached book exists", async
   client.nextConnectAt = Date.now() + 10000;
 
   await assert.rejects(() => client.getOrderbook("BTC", 10), /reconnect backoff/);
+});
+
+test("normalizeLighterWsUrl uses read-only stream by default", () => {
+  assert.equal(
+    normalizeLighterWsUrl("https://mainnet.zklighter.elliot.ai"),
+    "wss://mainnet.zklighter.elliot.ai/stream?readonly=true",
+  );
+  assert.equal(
+    normalizeLighterWsUrl("wss://mainnet.zklighter.elliot.ai/stream?foo=bar"),
+    "wss://mainnet.zklighter.elliot.ai/stream?foo=bar&readonly=true",
+  );
+  assert.equal(
+    normalizeLighterWsUrl("wss://mainnet.zklighter.elliot.ai/stream", { readonly: false }),
+    "wss://mainnet.zklighter.elliot.ai/stream",
+  );
+});
+
+test("ArbitrageEngine keeps the last display book when a venue fetch fails", async () => {
+  const previousLighterBook = {
+    exchange: "lighter",
+    symbol: "BTC",
+    market: "1",
+    receivedAt: Date.now() - 1000,
+    bestBid: 100,
+    bestAsk: 101,
+    latencyMs: 0,
+    spreadBps: 99.5,
+    bids: [{ price: 100, size: 1 }],
+    asks: [{ price: 101, size: 1 }],
+  };
+  const cascadeBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    raw: {
+      bids: [[100, 1]],
+      asks: [[101, 1]],
+    },
+  });
+  const store = {
+    state: {
+      paused: false,
+      books: { BTC: { lighter: previousLighterBook } },
+      opportunities: {},
+      openPositions: {},
+      exposure: {},
+    },
+    updateBooks(symbol, books) {
+      this.state.books[symbol] = books;
+    },
+    updateOpportunity(symbol, opportunity) {
+      if (opportunity) this.state.opportunities[symbol] = opportunity;
+      else delete this.state.opportunities[symbol];
+    },
+    appendEvent() {},
+    snapshot() {
+      return structuredClone(this.state);
+    },
+  };
+  const engine = new ArbitrageEngine({
+    config: {
+      orderbookDepth: 10,
+      staleBookMs: 15000,
+      maxBookSpreadBps: 100,
+      maxBookMidMoveBps: 500,
+      maxCrossVenueMidDiffBps: 300,
+      symbolErrorLogIntervalMs: 0,
+      routePairs: [["lighter", "cascade"]],
+      minTradeUsd: 10,
+      maxTradeUsd: 100,
+      takerFeeBps: 0,
+      slippageBufferBps: 0,
+    },
+    clients: {
+      lighter: { getOrderbook: async () => { throw new Error("Lighter WS reconnect backoff for 1"); } },
+      cascade: { getOrderbook: async () => cascadeBook },
+    },
+    executor: { execute: async () => null },
+    store,
+    logger: noopLogger(),
+  });
+
+  await engine.evaluateSymbol("BTC");
+
+  assert.equal(store.state.books.BTC.lighter.bestBid, 100);
+  assert.equal(store.state.books.BTC.lighter.wsConnected, false);
+  assert.match(store.state.books.BTC.lighter.lastError, /reconnect backoff/);
+  assert.equal(store.state.books.BTC.cascade.bestBid, 100);
 });
 
 test("checkBookHealth rejects sparse books with excessive internal spread", () => {

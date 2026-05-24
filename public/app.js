@@ -105,13 +105,16 @@ function exchangeQuoteHtml(exchange, book) {
     `age ${ageLabel(book.receivedAt)}`,
     `${fmt(book.latencyMs, 0)}ms`,
     `spread ${fmt(book.spreadBps, 1)}bps`,
+    book.wsConnected === false ? "ws disconnected" : "",
     book.rateLimited ? "rate limited" : "",
     book.nonce ? `nonce ${book.nonce}` : "",
+    book.lastError ? `last error ${book.lastError}` : "",
+    book.errorAt ? `error age ${ageLabel(book.errorAt)}` : "",
   ]
     .filter(Boolean)
     .join(" / ");
   return `<span>${labelExchange(exchange)} bid <strong>${fmt(book.bestBid, 4)}</strong> / ${fmt(book.bids?.[0]?.size, 6)}
-      <small>${extra}</small>
+      <small>${escapeHtml(extra)}</small>
     </span>
     <span>${labelExchange(exchange)} ask <strong>${fmt(book.bestAsk, 4)}</strong> / ${fmt(book.asks?.[0]?.size, 6)}</span>`;
 }

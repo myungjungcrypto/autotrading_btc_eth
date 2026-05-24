@@ -55,7 +55,7 @@ Healthy logs should include:
 
 ```text
 dashboard listening ... http://127.0.0.1:8787
-Lighter WS connected ... wss://mainnet.zklighter.elliot.ai/stream
+Lighter WS connected ... wss://mainnet.zklighter.elliot.ai/stream?readonly=true
 Cascade WS connected
 RISEx WS connected ... wss://api.rise.trade/ws/
 ```
@@ -70,7 +70,9 @@ STALE_BOOK_MS=15000
 EXCHANGES=cascade,risex,lighter
 ROUTE_PAIRS=lighter:cascade,lighter:risex
 LIGHTER_WS_URL=wss://mainnet.zklighter.elliot.ai/stream
+LIGHTER_WS_READONLY=true
 LIGHTER_WS_RECONNECT_BACKOFF_MS=10000
+LIGHTER_WS_RECONNECT_BACKOFF_MAX_MS=120000
 ```
 
 ### Stop Bot On EC2

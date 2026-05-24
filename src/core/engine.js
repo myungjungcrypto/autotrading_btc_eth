@@ -72,20 +72,26 @@ export class ArbitrageEngine extends EventEmitter {
 
   async evaluateSymbol(symbol) {
     const previousHealthyBooks = this.lastHealthyBooks.get(symbol) ?? {};
+    const previousDisplayBooks = this.store.state.books?.[symbol] ?? {};
     const clientEntries = Object.entries(this.clients);
     const results = await Promise.allSettled(
       clientEntries.map(([, client]) => client.getOrderbook(symbol, this.config.orderbookDepth)),
     );
 
     const books = {};
+    const displayBooks = { ...previousDisplayBooks };
     for (let i = 0; i < results.length; i += 1) {
       const [exchange] = clientEntries[i];
       const result = results[i];
       if (result.status === "fulfilled") {
         books[exchange] = result.value;
+        displayBooks[exchange] = stripRawBook(result.value);
       } else {
         const details = compactError(result.reason);
         this.store.state.lastError = details;
+        if (previousDisplayBooks[exchange]) {
+          displayBooks[exchange] = markDisplayBookError(previousDisplayBooks[exchange], details);
+        }
         if (this.shouldLogSymbolError(symbol, { ...details, exchange })) {
           this.store.appendEvent("venue.error", { symbol, exchange, ...details });
           this.logger.error(`symbol ${symbol} ${exchange} failed`, result.reason);
@@ -93,9 +99,6 @@ export class ArbitrageEngine extends EventEmitter {
       }
     }
 
-    const displayBooks = Object.fromEntries(
-      Object.entries(books).map(([exchange, book]) => [exchange, stripRawBook(book)]),
-    );
     this.store.updateBooks(symbol, displayBooks);
 
     const now = Date.now();
@@ -266,10 +269,21 @@ function stripRawBook(book) {
     spreadBps: bookSpreadBps(book),
     rateLimited: book.rateLimited,
     rateLimitBackoffUntil: book.rateLimitBackoffUntil,
+    wsConnected: book.wsConnected,
     nonce: book.nonce,
     beginNonce: book.beginNonce,
     offset: book.offset,
     bids: book.bids.slice(0, 10),
     asks: book.asks.slice(0, 10),
+  };
+}
+
+function markDisplayBookError(book, details) {
+  return {
+    ...book,
+    lastError: details.message ?? "unknown error",
+    lastErrorName: details.name ?? "Error",
+    errorAt: Date.now(),
+    wsConnected: false,
   };
 }

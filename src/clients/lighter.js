@@ -16,6 +16,8 @@ export class LighterClient {
     this.wsSubscribedMarketIds = new Set();
     this.lastOrderbookLogAt = new Map();
     this.nextConnectAt = 0;
+    this.reconnectFailures = 0;
+    this.lastBackoffLogAt = 0;
     this.closed = false;
   }
 
@@ -83,6 +85,8 @@ export class LighterClient {
     this.ws.on("open", () => {
       this.connecting = false;
       this.nextConnectAt = 0;
+      this.reconnectFailures = 0;
+      this.lastBackoffLogAt = 0;
       for (const marketId of this.subscribedMarketIds) this.sendOrderbookSubscribe(marketId);
       this.logger.info("Lighter WS connected", {
         url: this.config.wsUrl,
@@ -340,9 +344,20 @@ export class LighterClient {
   }
 
   scheduleReconnect(reason) {
-    const backoffMs = this.config.wsReconnectBackoffMs ?? 10000;
-    this.nextConnectAt = Math.max(this.nextConnectAt, Date.now() + backoffMs);
-    this.logger.warn("Lighter WS reconnect backoff", { reason, backoffMs });
+    const now = Date.now();
+    const baseBackoffMs = this.config.wsReconnectBackoffMs ?? 10000;
+    const maxBackoffMs = this.config.wsReconnectBackoffMaxMs ?? 120000;
+    this.reconnectFailures += 1;
+    const multiplier = 2 ** Math.min(this.reconnectFailures - 1, 6);
+    const backoffMs = Math.min(maxBackoffMs, baseBackoffMs * multiplier);
+    this.nextConnectAt = Math.max(this.nextConnectAt, now + backoffMs);
+    if (now - this.lastBackoffLogAt < Math.min(backoffMs, 30000)) return;
+    this.lastBackoffLogAt = now;
+    this.logger.warn("Lighter WS reconnect backoff", {
+      reason,
+      backoffMs,
+      failures: this.reconnectFailures,
+    });
   }
 }
 
