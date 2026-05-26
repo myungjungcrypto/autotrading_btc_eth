@@ -4,7 +4,7 @@ Production-oriented delta-neutral arbitrage monitor for BTC and ETH across Light
 
 The app starts in `paper` trading mode with `MARKET_DATA_MODE=live`, so it reads real public order books while keeping order execution disabled. It monitors order books, opens delta-neutral pairs when the executable spread is wide enough, closes them when the spread reverts, records PnL, serves a dashboard, sends Telegram notifications when configured, and produces a daily report. Live trading is intentionally gated by both `TRADING_MODE=live` and `TRADING_ENABLED=true`.
 
-Trade decisions use executable orderbook depth, not mark/index prices. By default the engine evaluates `lighter:cascade` and `lighter:risex` route pairs, opens when net spread is at least `ENTRY_EDGE_BPS=50` (0.5%), and closes when the same route compresses to `EXIT_EDGE_BPS=0`.
+Trade decisions use executable orderbook depth, not mark/index prices. By default the engine evaluates `lighter:cascade` and `lighter:risex` route pairs, opens when net spread is at least `ENTRY_EDGE_BPS=50` (0.5%), and closes only after the spread compresses to `EXIT_EDGE_BPS=0` and the simulated unwind PnL is at least `MIN_CLOSE_PNL_USD=0`. `MIN_POSITION_HOLD_MS` and `TRADE_COOLDOWN_MS` reduce rapid open-close churn around noisy quotes.
 
 ## Quick Start
 

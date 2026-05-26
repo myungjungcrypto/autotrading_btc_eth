@@ -24,6 +24,7 @@ export class ArbitrageEngine extends EventEmitter {
     this.lastSymbolErrorLogAt = new Map();
     this.lastSymbolSkipLogAt = new Map();
     this.lastHealthyBooks = new Map();
+    this.lastTradeAtBySymbol = new Map();
   }
 
   start() {
@@ -179,6 +180,15 @@ export class ArbitrageEngine extends EventEmitter {
       return;
     }
 
+    if (opportunity.action !== "close" && this.isTradeCooldownActive(symbol)) {
+      this.store.appendEvent("opportunity.rejected", {
+        symbol,
+        reason: "trade_cooldown",
+        details: this.tradeCooldownDetails(symbol),
+      });
+      return;
+    }
+
     const risk = checkOpportunityRisk({
       opportunity,
       state,
@@ -192,8 +202,25 @@ export class ArbitrageEngine extends EventEmitter {
     this.store.appendEvent("opportunity.accepted", opportunity);
     if (this.config.mode === "paper" || this.config.enabled) {
       const trade = await this.executor.execute(opportunity);
+      this.lastTradeAtBySymbol.set(symbol, Date.now());
       this.emitEvent("trade.executed", trade);
     }
+  }
+
+  isTradeCooldownActive(symbol) {
+    const cooldownMs = this.config.tradeCooldownMs ?? 0;
+    if (cooldownMs <= 0) return false;
+    const lastTradeAt = this.lastTradeAtBySymbol.get(symbol) ?? 0;
+    return Date.now() - lastTradeAt < cooldownMs;
+  }
+
+  tradeCooldownDetails(symbol) {
+    const cooldownMs = this.config.tradeCooldownMs ?? 0;
+    const lastTradeAt = this.lastTradeAtBySymbol.get(symbol) ?? 0;
+    return {
+      cooldownMs,
+      remainingMs: Math.max(0, cooldownMs - (Date.now() - lastTradeAt)),
+    };
   }
 
   emitEvent(type, payload) {

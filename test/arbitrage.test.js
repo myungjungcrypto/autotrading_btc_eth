@@ -11,7 +11,13 @@ import { CascadeClient } from "../src/clients/cascade.js";
 import { LighterClient } from "../src/clients/lighter.js";
 import { RisexClient } from "../src/clients/risex.js";
 import { ArbitrageEngine } from "../src/core/engine.js";
-import { bookSpreadBps, checkBookHealth, checkBookMove, checkCrossVenueMid } from "../src/core/risk.js";
+import {
+  bookSpreadBps,
+  checkBookHealth,
+  checkBookMove,
+  checkCrossVenueMid,
+  checkOpportunityRisk,
+} from "../src/core/risk.js";
 import { normalizeLighterWsUrl } from "../src/config.js";
 
 test("consumeNotional calculates VWAP across levels", () => {
@@ -333,6 +339,78 @@ test("evaluateExitArbitrage holds while entry spread is still above exit thresho
   });
 
   assert.equal(close, null);
+});
+
+test("evaluateExitArbitrage holds when closing would realize less than minimum pnl", () => {
+  const cascadeBook = normalizeOrderbook({
+    exchange: "cascade",
+    symbol: "BTC",
+    market: "BTC-USD-PERP",
+    raw: {
+      bids: [[99, 2]],
+      asks: [[100.2, 2]],
+    },
+  });
+  const risexBook = normalizeOrderbook({
+    exchange: "risex",
+    symbol: "BTC",
+    market: "1",
+    raw: {
+      bids: [[100.1, 2]],
+      asks: [[101.4, 2]],
+    },
+  });
+
+  const close = evaluateExitArbitrage({
+    symbol: "BTC",
+    position: {
+      id: "pos-1",
+      symbol: "BTC",
+      buyExchange: "cascade",
+      sellExchange: "risex",
+      size: 1,
+      entryBuyPrice: 100,
+      entrySellPrice: 101,
+      entryBuyNotional: 100,
+      entrySellNotional: 101,
+      entryCostUsd: 0,
+    },
+    cascadeBook,
+    risexBook,
+    config: {
+      exitEdgeBps: 0,
+      minClosePnlUsd: 0,
+      takerFeeBps: 0,
+      slippageBufferBps: 0,
+    },
+  });
+
+  assert.equal(close, null);
+});
+
+test("checkOpportunityRisk rejects closes before the minimum hold window", () => {
+  const risk = checkOpportunityRisk({
+    opportunity: {
+      action: "close",
+      symbol: "ETH",
+      positionId: "pos-1",
+    },
+    state: {
+      openPositions: {
+        ETH: {
+          id: "pos-1",
+          openedAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      },
+      dailyPnlUsd: 0,
+    },
+    config: {
+      minPositionHoldMs: 3000,
+    },
+  });
+
+  assert.equal(risk.ok, false);
+  assert.equal(risk.reason, "position_min_hold");
 });
 
 test("RisexClient applies WebSocket orderbook snapshots and deltas", () => {

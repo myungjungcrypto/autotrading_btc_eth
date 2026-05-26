@@ -260,6 +260,7 @@ export function evaluateExitArbitrageAcrossBooks({ symbol, position, books, conf
     closeRoute.buy.notionalUsd -
     entryCostUsd -
     closeCostUsd;
+  if (pnlUsd < (config.minClosePnlUsd ?? -Infinity)) return null;
 
   return {
     action: "close",

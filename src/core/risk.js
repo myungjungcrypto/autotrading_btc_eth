@@ -107,6 +107,18 @@ export function checkOpportunityRisk({ opportunity, state, config }) {
     if (openPosition.id !== opportunity.positionId) {
       return { ok: false, reason: "position_mismatch" };
     }
+    const minHoldMs = config.minPositionHoldMs ?? 0;
+    if (minHoldMs > 0) {
+      const openedAt = new Date(openPosition.openedAt).getTime();
+      const ageMs = Date.now() - openedAt;
+      if (Number.isFinite(ageMs) && ageMs < minHoldMs) {
+        return {
+          ok: false,
+          reason: "position_min_hold",
+          details: { ageMs, minHoldMs },
+        };
+      }
+    }
     return { ok: true };
   }
   if (state.dailyPnlUsd <= -config.maxDailyLossUsd) {
